@@ -214,23 +214,25 @@ if MPI.COMM_WORLD.rank == 0:
     phi_combined = phi_combined[sort_indices]
 
     print(c2_combined[0]/(c_bulk*np.exp(phi_combined[0]/phi_char)))
-    # fig = plt.figure()
-    # plt.plot(points_combined[:, 2]*x_char, c1_combined, "k", linewidth=2, label="c1")
-    # plt.plot(points_combined[:, 2]*x_char, c2_combined, "b", linewidth=2, label="c2")
+    fig = plt.figure()
+    plt.plot(points_combined[:, 2]*x_char, c1_combined, "k", linewidth=2, label="c1")
+    plt.plot(points_combined[:, 2]*x_char, c2_combined, "b", linewidth=2, label="c2")
     
-    # plt.xscale("linear")
-    # plt.grid(True)
-    # plt.xlabel("x")
-    # plt.legend()
-    
+    plt.xscale("linear")
+    plt.grid(True)
+    plt.xlabel("x")
+    plt.legend()
+    fig.savefig("Concentrations_SS.png", bbox_inches="tight", dpi=300)
 
-    # fig2 = plt.figure()
-    # plt.plot(points_combined[:, 2]*x_char, phi_combined, "r", linewidth=2, label="phi")
-    # plt.grid(True)
-    # plt.xlabel("x")
-    # plt.xscale("linear")
-    # plt.legend()
-    # print("Done")
+    fig2 = plt.figure()
+    plt.plot(points_combined[:, 2]*x_char, phi_combined, "r", linewidth=2, label="phi")
+    plt.grid(True)
+    plt.xlabel("x")
+    plt.xscale("linear")
+    plt.legend()
+    print("Done")
+    fig2.savefig("Potential_SS.png", bbox_inches="tight", dpi=300)
+
     #plt.show()
 
 

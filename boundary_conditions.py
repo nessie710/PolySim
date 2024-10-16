@@ -155,6 +155,6 @@ def assemble_boundary_conditions_AC_electrode_matrix(VAC, facet_tags, fdim, V_bu
     dofs_walls = fem.locate_dofs_topological((V_split, V_c2), fdim, facet_tags.find(wall_marker))
     bc_c2_walls = fem.dirichletbc(ud, dofs_walls, V_split)
 
-    bcs = [bc_potential_bulk, bc_potential_activated, bc_potential_counter, bc_c1_walls, bc_c2_walls, bc_potential_walls]
+    bcs = [bc_potential_bulk, bc_potential_activated, bc_potential_counter, bc_c1_walls, bc_c1_bulk, bc_c2_bulk, bc_c2_walls, bc_potential_walls]
     
     return bcs
