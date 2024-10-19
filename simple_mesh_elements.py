@@ -370,15 +370,3 @@ def gmsh_5x5_cylinder(model: gmsh.model, name:str, L: float, R_sens, R_cylinder,
     
     return (central_electrode_marker, bulk_marker, activated_electrode_marker, counter_electrodes_marker, wall_marker)
 
-
-
-
-
-
-
-
-
-
-
-
-
