@@ -44,6 +44,7 @@ def mpi_print(s):
 
 
 # Constants
+
 epsilon0 = 8.8541878128e-12
 epsilon_r_w = 80
 epsilon_w = epsilon_r_w*epsilon0
@@ -53,30 +54,25 @@ k = 1.380649e-23
 T = 300
 D1 = 1e-9
 D2 = 1e-9
-c_bulk = 1
+
+d = 0.25e-9
 
 phi_char = k*T/q
-c_char = c_bulk
-x_char = np.sqrt(epsilon_w*k*T/((q**2)*2*c_char*NA))  
+c_char = 1/(NA*d**3)
+x_char = np.sqrt(epsilon_w*k*T/((q**2)*NA*c_char))  
 J1_char = q*D1*c_char*NA/x_char
 J2_char = q*D2*c_char*NA/x_char
 t_char = x_char**2/D1
 f_char = 1/t_char
 
+c_bulk = 170
 c_bulk_scaled = c_bulk/c_char
-Vapp = 1e-3
+Vapp = 0.5
 Vapp_scaled = Vapp/phi_char
 V_bulk = 0
 V_bulk_scaled = V_bulk/phi_char
-Vapp_AC = 1e-3
-Vapp_AC_scaled = Vapp_AC/phi_char
 L = 1e-7
 L_scaled = L/x_char
-R_sens = 90e-9
-R_sens_scaled = R_sens/x_char
-frequencies = np.logspace(3,9,10)/f_char
-
-omegas = 2*np.pi*frequencies
 print(c_bulk_scaled)
 
 
@@ -99,9 +95,9 @@ except ImportError:
     
 # Define Mesh
 
-domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=500)
+domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=5000)
 topology, geometry = domain.topology, domain.geometry
-
+eps = ufl.Constant(domain, np.finfo(float).eps)
 cluster = ipp.Cluster(engines="mpi", n=1)
 rc = cluster.start_and_connect_sync()
 
@@ -136,13 +132,15 @@ c1, c2, phi= ufl.split(u)
 n = ufl.FacetNormal(domain)
 
 # IMPORT STATIONARY EQUATION SET
-#F1 = -ufl.inner(ufl.grad(c1)[0], v1) * ufl.dx - ufl.inner(c1 * ufl.grad(phi)[0], v1) * ufl.dx
-#F4 = ufl.inner(ufl.grad(c2)[0], v2) * ufl.dx - ufl.inner(c2 * ufl.grad(phi)[0], v2) * ufl.dx
-F7 = ufl.inner(ufl.grad(phi), ufl.grad(vphi)) * ufl.dx - (1/2)*ufl.inner((c1-c2), vphi) * ufl.dx
-F8 = ufl.inner(-ufl.grad(c1) - c1 * ufl.grad(phi), ufl.grad(v1)) * ufl.dx
-F9 = ufl.inner(-ufl.grad(c2) + c2 * ufl.grad(phi), ufl.grad(v2)) * ufl.dx
 
-F = F7 + F8 + F9
+F1 = -ufl.inner(ufl.grad(c1)[0], v1) * ufl.dx - ufl.inner(c1 * ufl.grad(phi)[0], v1) * ufl.dx - ufl.inner((c1/(1-c1-c2))*(ufl.grad(c1)[0]+ ufl.grad(c2)[0]), v1)*ufl.dx 
+F2 = -ufl.inner(ufl.grad(c2)[0], v2) * ufl.dx + ufl.inner(c2 * ufl.grad(phi)[0], v2) * ufl.dx - ufl.inner((c2/(1-c1-c2))*(ufl.grad(c1)[0]+ ufl.grad(c2)[0]), v2)*ufl.dx
+
+F7 = ufl.inner(ufl.grad(phi), ufl.grad(vphi)) * ufl.dx - ufl.inner((c1-c2), vphi) * ufl.dx
+F8 = ufl.inner(-ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v1)) * ufl.dx
+F9 = ufl.inner(-ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v2)) * ufl.dx
+
+F =  F7 + F8 + F9
 
 # SET BOUNDARY CONDITIONS
 def boundary_R(x):
@@ -185,7 +183,7 @@ bcs = [bc_potential_bulk, bc_potential_surface, bc_c1_bulk, bc_c2_bulk]
 problem = NonlinearProblem(F, u, bcs = bcs)
 solver = NewtonSolver(MPI.COMM_WORLD, problem)
 solver.convergence_criterion = "incremental"
-solver.rtol = np.sqrt(np.finfo(default_real_type).eps) * 1e-2
+solver.rtol = np.sqrt(np.finfo(default_real_type).eps) 
 solver.max_it = 200
 
 ksp = solver.krylov_solver
@@ -248,6 +246,8 @@ if MPI.COMM_WORLD.rank == 0:
     plt.plot(points_combined[:, 0]*x_char, c2_combined, "b", linewidth=2, label="c2")
     
     plt.xscale("linear")
+    plt.yscale("log")
+
     plt.grid(True)
     plt.xlabel("x")
     plt.legend()
