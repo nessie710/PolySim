@@ -70,9 +70,9 @@ V_bulk = 0
 V_bulk_scaled = V_bulk/phi_char
 Vapp_AC = 1e-3
 Vapp_AC_scaled = Vapp_AC/phi_char
-L = 1e-7
+L = 1e-5
 L_scaled = L/x_char
-R_sens = 9e-9
+R_sens = 90e-9
 R_sens_scaled = R_sens/x_char
 frequencies = np.logspace(3,9,10)/f_char
 

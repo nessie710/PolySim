@@ -206,7 +206,7 @@ def gmsh_simple_1_electrode_domain(model: gmsh.model, name:str, L: float, R_sens
     model.mesh.field.setNumbers(distance, "FacesList", [electrode1])
 
 
-    r = 2
+    r = 50
     resolution = r / 10
     threshold = model.mesh.field.add("Threshold")
     model.mesh.field.setNumber(threshold, "IField", distance)

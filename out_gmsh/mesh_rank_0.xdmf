@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>
+<Xdmf Version="3.0" xmlns:xi="https://www.w3.org/2001/XInclude">
+  <Domain>
+    <Grid Name="Square" GridType="Uniform">
+      <Topology TopologyType="Triangle" NumberOfElements="24594" NodesPerElement="3">
+        <DataItem Dimensions="24594 3" NumberType="Int" Format="HDF">mesh_rank_0.h5:/Mesh/Square/topology</DataItem>
+      </Topology>
+      <Geometry GeometryType="XYZ">
+        <DataItem Dimensions="12504 3" Format="HDF">mesh_rank_0.h5:/Mesh/Square/geometry</DataItem>
+      </Geometry>
+    </Grid>
+    <Grid Name="Square_cells" GridType="Uniform">
+      <xi:include xpointer="xpointer(/Xdmf/Domain/Grid[@Name='Square']/Geometry)" />
+      <Topology TopologyType="Triangle" NumberOfElements="24594" NodesPerElement="3">
+        <DataItem Dimensions="24594 3" NumberType="Int" Format="HDF">mesh_rank_0.h5:/MeshTags/Square_cells/topology</DataItem>
+      </Topology>
+      <Attribute Name="Square_cells" AttributeType="Scalar" Center="Cell">
+        <DataItem Dimensions="24594 1" Format="HDF">mesh_rank_0.h5:/MeshTags/Square_cells/Values</DataItem>
+      </Attribute>
+    </Grid>
+    <Grid Name="Square_facets" GridType="Uniform">
+      <xi:include xpointer="xpointer(/Xdmf/Domain/Grid[@Name='Square']/Geometry)" />
+      <Topology TopologyType="PolyLine" NumberOfElements="0" NodesPerElement="2">
+        <DataItem Dimensions="0 2" NumberType="Int" Format="HDF">mesh_rank_0.h5:/MeshTags/Square_facets/topology</DataItem>
+      </Topology>
+      <Attribute Name="Square_facets" AttributeType="Scalar" Center="Cell">
+        <DataItem Dimensions="0 1" Format="HDF">mesh_rank_0.h5:/MeshTags/Square_facets/Values</DataItem>
+      </Attribute>
+    </Grid>
+  </Domain>
+</Xdmf>

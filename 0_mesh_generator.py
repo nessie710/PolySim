@@ -20,7 +20,7 @@ try:
 except ImportError:
     print("This demo requires gmsh to be installed")
     exit(0)
-from simple_mesh_elements import gmsh_5x5_cylinder
+from simple_mesh_elements import gmsh_simple_1_electrode_domain
 
 # Constants
 epsilon0 = 8.8541878128e-12
@@ -71,5 +71,4 @@ omegas = 2*np.pi*frequencies
 gmsh.initialize()
 gmsh.option.setNumber("General.Terminal",0)
 model = gmsh.model()
-central , bulk_marker, activated_electrodes, counter_electrodes, wall_marker = gmsh_5x5_cylinder(model, "Chamber", L_scaled, R_sens_scaled,R_cylinder_scaled,L_cylinder_scaled,dz_scaled,pitch_scaled)
-print(central)
+bulk_marker, electrode_marker, wall_marker = gmsh_simple_1_electrode_domain(model, "Chamber", L_scaled, R_sens_scaled)
