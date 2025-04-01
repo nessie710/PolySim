@@ -32,7 +32,7 @@ import basix.ufl
 from dolfinx.fem.petsc import NonlinearProblem, LinearProblem
 from dolfinx.nls.petsc import NewtonSolver
 print(PETSc.ScalarType)
-assert np.dtype(PETSc.ScalarType).kind == 'c'
+# assert np.dtype(PETSc.ScalarType).kind == 'c'
 from boundary_conditions import assemble_boundary_conditions_stationary, assemble_boundary_conditions_AC
 from PNP_equation_sets import assemble_stationary_problem, assemble_AC_problem
 from extract_cutlines import extract_central_cutline_1D
@@ -129,6 +129,14 @@ v1, v2, vphi= ufl.TestFunctions(V)
 u = fem.Function(V)
 c1, c2, phi= ufl.split(u)
 
+def c0_init(x):
+    values = np.zeros((1, x.shape[1]))
+    values[0] = c_bulk_scaled
+    return values
+
+u.sub(0).interpolate(c0_init)
+u.sub(1).interpolate(c0_init)
+
 n = ufl.FacetNormal(domain)
 
 # IMPORT STATIONARY EQUATION SET
@@ -140,9 +148,18 @@ F7 = ufl.inner(ufl.grad(phi), ufl.grad(vphi)) * ufl.dx - ufl.inner((c1-c2), vphi
 F8 = ufl.inner(-ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v1)) * ufl.dx
 F9 = ufl.inner(-ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v2)) * ufl.dx
 
-F =  F7 + F8 + F9
 
-# SET BOUNDARY CONDITIONS
+hk = ufl.CellDiameter(domain)
+b      = (1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
+nb     = ufl.sqrt(ufl.dot(b,b))
+tau = 1/ufl.sqrt((2*nb/hk)**2 + (4*D1/(hk**2))**2)
+L1 = 0.5*(v1*ufl.div(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2)) + 2*ufl.inner(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2),ufl.grad(v1)))
+L2 = 0.5*(v2*ufl.div(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2)) + 2*ufl.inner(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2),ufl.grad(v2)))
+supg = ufl.div(-ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)))*tau*L1*ufl.dx + ufl.div(-ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)))*tau*L2*ufl.dx
+
+F = F7 + F8 + F9 #+ supg
+
+# SET BOUNDARY CONDITIONS 
 def boundary_R(x):
     return np.isclose(x[0], L_scaled)
 
@@ -189,8 +206,8 @@ solver.max_it = 200
 ksp = solver.krylov_solver
 opts = PETSc.Options()  
 option_prefix = ksp.getOptionsPrefix()
-opts[f"{option_prefix}ksp_type"] = "preonly"
-opts[f"{option_prefix}pc_type"] = "lu"
+opts[f"{option_prefix}ksp_type"] = "minres"
+opts[f"{option_prefix}pc_type"] = "jacobi"
 sys = PETSc.Sys()  
 opts[f"{option_prefix}pc_factor_mat_solver_type"] = "mumps"
 ksp.setFromOptions()
@@ -246,7 +263,7 @@ if MPI.COMM_WORLD.rank == 0:
     plt.plot(points_combined[:, 0]*x_char, c2_combined, "b", linewidth=2, label="c2")
     
     plt.xscale("linear")
-    plt.yscale("log")
+    #plt.yscale("log")
 
     plt.grid(True)
     plt.xlabel("x")
