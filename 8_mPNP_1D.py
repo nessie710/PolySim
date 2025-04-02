@@ -55,7 +55,7 @@ T = 300
 D1 = 1e-9
 D2 = 1e-9
 
-d = 0.25e-9
+d = 0.72e-9
 
 phi_char = k*T/q
 c_char = 1/(NA*d**3)
@@ -67,11 +67,11 @@ f_char = 1/t_char
 
 c_bulk = 170
 c_bulk_scaled = c_bulk/c_char
-Vapp = 0.5
+Vapp = 0.2
 Vapp_scaled = Vapp/phi_char
 V_bulk = 0
 V_bulk_scaled = V_bulk/phi_char
-L = 1e-7
+L = 1e-8
 L_scaled = L/x_char
 print(c_bulk_scaled)
 
@@ -95,7 +95,7 @@ except ImportError:
     
 # Define Mesh
 
-domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=5000)
+domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=50000)
 topology, geometry = domain.topology, domain.geometry
 eps = ufl.Constant(domain, np.finfo(float).eps)
 cluster = ipp.Cluster(engines="mpi", n=1)
@@ -148,16 +148,36 @@ F7 = ufl.inner(ufl.grad(phi), ufl.grad(vphi)) * ufl.dx - ufl.inner((c1-c2), vphi
 F8 = ufl.inner(-ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v1)) * ufl.dx
 F9 = ufl.inner(-ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v2)) * ufl.dx
 
+#F7_normal = ufl.inner(ufl.grad(phi), ufl.grad(vphi)) * ufl.dx - ufl.inner((NA*q/epsilon_w)*(c1-c2), vphi) * ufl.dx
+#F8_normal = ufl.inner(-D1*ufl.grad(c1) - (D1/(k*T/q))*c1 * ufl.grad(phi) - (NA*d**3*c1/(1-NA*d**3*c1-NA*d**3*c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v1)) * ufl.dx
+#F9_normal = ufl.inner(-D2*ufl.grad(c1) + (D2/(k*T/q))*c2 * ufl.grad(phi) - (NA*d**3*c2/(1-NA*d**3*c1-NA*d**3*c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v2)) * ufl.dx
+
 
 hk = ufl.CellDiameter(domain)
-b      = (1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
-nb     = ufl.sqrt(ufl.dot(b,b))
-tau = 1/ufl.sqrt((2*nb/hk)**2 + (4*D1/(hk**2))**2)
-L1 = 0.5*(v1*ufl.div(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2)) + 2*ufl.inner(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2),ufl.grad(v1)))
-L2 = 0.5*(v2*ufl.div(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2)) + 2*ufl.inner(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2),ufl.grad(v2)))
-supg = ufl.div(-ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)))*tau*L1*ufl.dx + ufl.div(-ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)))*tau*L2*ufl.dx
+b = - ufl.grad(D1/x_char * phi)
 
-F = F7 + F8 + F9 #+ supg
+def psi(q):
+    return ufl.conditional(q > 1, 1, q)
+
+nb = ufl.sqrt(ufl.dot(b,b))
+
+Pe = 0.33*nb*hk/(2*D1)
+
+sigma = hk/(2*nb)*psi(Pe)
+v1_supg = ufl.inner(sigma*b, ufl.grad(v1))
+v2_supg = ufl.inner(sigma*b, ufl.grad(v2))
+
+supg1 = ufl.inner(ufl.div(ufl.grad(c1) + c1 * ufl.grad(phi) + (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))), v1_supg) * ufl.dx
+supg2 = ufl.inner(ufl.div(ufl.grad(c2) - c2 * ufl.grad(phi) + (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))), v2_supg) * ufl.dx
+
+# b      = (1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
+# nb     = ufl.sqrt(ufl.dot(b,b))
+# tau = 1/ufl.sqrt((2*nb/hk)**2 + (4*D1/(hk**2))**2)
+# L1 = 0.5*(v1*ufl.div(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2)) + 2*ufl.inner(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2),ufl.grad(v1)))
+# L2 = 0.5*(v2*ufl.div(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2)) + 2*ufl.inner(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2),ufl.grad(v2)))
+# supg = ufl.div(-ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)))*tau*L1*ufl.dx + ufl.div(-ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)))*tau*L2*ufl.dx
+
+F = F7 + F8 + F9 + supg1 + supg2
 
 # SET BOUNDARY CONDITIONS 
 def boundary_R(x):
@@ -206,8 +226,8 @@ solver.max_it = 200
 ksp = solver.krylov_solver
 opts = PETSc.Options()  
 option_prefix = ksp.getOptionsPrefix()
-opts[f"{option_prefix}ksp_type"] = "minres"
-opts[f"{option_prefix}pc_type"] = "jacobi"
+opts[f"{option_prefix}ksp_type"] = "gmres"
+opts[f"{option_prefix}pc_type"] = "lu"
 sys = PETSc.Sys()  
 opts[f"{option_prefix}pc_factor_mat_solver_type"] = "mumps"
 ksp.setFromOptions()
@@ -257,13 +277,19 @@ if MPI.COMM_WORLD.rank == 0:
     c2_combined = c2_combined[sort_indices]
     phi_combined = phi_combined[sort_indices]
     
-    print(c2_combined[0]/(c_bulk*np.exp(phi_combined[0]/phi_char)))
+    print("Simulated concentration")
+    print(c2_combined[0])
+    print("Theoretical concentration")
+    print(c_bulk*np.exp(phi_combined[0]/(k*T/q)) / (1- 2*NA*d**3*c_bulk + 2*NA*d**3*c_bulk*np.cosh(phi_combined[0]/(k*T/q))))
+    print("PNP concentration")
+    print(c_bulk*np.exp(phi_combined[0]/(k*T/q)))
     fig = plt.figure()
     plt.plot(points_combined[:, 0]*x_char, c1_combined, "k", linewidth=2, label="c1")
     plt.plot(points_combined[:, 0]*x_char, c2_combined, "b", linewidth=2, label="c2")
-    
+    plt.plot(points_combined[:,0]*x_char, c_bulk*np.exp(phi_combined/(k*T/q)) / (1- 2*NA*d**3*c_bulk + 2*NA*d**3*c_bulk*np.cosh(phi_combined/(k*T/q))), "green", label="c2 theoretical")
     plt.xscale("linear")
-    #plt.yscale("log")
+    #plt.xlim([0,0.2e-8])
+    # plt.yscale("log")
 
     plt.grid(True)
     plt.xlabel("x")
