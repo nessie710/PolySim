@@ -74,11 +74,11 @@ f_char = 1/t_char
 
 c_bulk = 170
 c_bulk_scaled = c_bulk/c_char
-Vapp = 0.1
+Vapp = 0.3
 Vapp_scaled = Vapp/phi_char
 V_bulk = 0
 V_bulk_scaled = V_bulk/phi_char
-L = 1e-8
+L = 1e-9
 L_scaled = L/x_char
 print(c_bulk_scaled)
 
@@ -102,7 +102,7 @@ except ImportError:
     
 # Define Mesh
 
-domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=500000)
+domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=50000)
 topology, geometry = domain.topology, domain.geometry
 eps = ufl.Constant(domain, np.finfo(float).eps)
 cluster = ipp.Cluster(engines="mpi", n=1)
@@ -119,11 +119,10 @@ domain.topology.create_connectivity(fdim, tdim)
 x = ufl.SpatialCoordinate(domain)
 
 
-element_family_vector = basix.ElementFamily.BDM
-element_degree = 1
-variant = basix.LagrangeVariant.equispaced
-vector_el = basix.ufl.element(element_family_vector, domain.topology.cell_name(), element_degree, variant)
-#vector_el = ufl.VectorElement("Lagrange", domain.ufl_cell(), element_degree)
+# element_family_vector = basix.ElementFamily.BDM
+# element_degree = 1
+# variant = basix.LagrangeVariant.equispaced
+# vector_el = basix.ufl.element(element_family_vector, domain.topology.cell_name(), element_degree, variant)
 
 
 element_family_scalar = basix.ElementFamily.P
@@ -233,7 +232,8 @@ bc_c2_bulk = fem.dirichletbc(ud, dofs_bulk, V_split)
 
 bcs = [bc_potential_bulk, bc_potential_surface, bc_c1_bulk, bc_c2_bulk]
 
-
+print(np.shape(V.sub(0).element.interpolation_points()))
+print(V.sub(0).element.interpolation_points())
 
 # SET PROBLEM
 
@@ -346,25 +346,31 @@ c2_local = u.sub(1).eval(points_on_proc, cells)*c_char
 phi_local = u.sub(2).eval(points_on_proc, cells)*phi_char
 
 
+points = np.array([[0.5]], dtype=np.float64)
+num_cells_local = domain.topology.index_map(domain.topology.dim).size_local
+cells_local = range(0,num_cells_local)
+
+x_expr = dolfinx.fem.Expression(ufl.SpatialCoordinate(domain), points)
+coords = x_expr.eval(domain, cells_local)
 
 J1 = -ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
-V_vector_temp = fem.functionspace(domain, vector_el)
-J1_func = fem.Function(V_vector_temp)
+#V_vector_temp = fem.functionspace(domain, scalar_el)
+#J1_func = fem.Function(V_vector_temp)
 #J1_func = fem.Function(V)
-expr_J1 = fem.Expression(J1, V_vector_temp.element.interpolation_points())
-J1_func.interpolate(expr_J1)
-form = fem.form(J1_func)
-integral_j1_value = fem.assemble_scalar(form)
-j1_local = integral_j1_value*J1_char*(x_char**2)
+expr_J1 = fem.Expression(J1, points)
+#J1_func.interpolate(expr_J1)
+# form = fem.form(J1_func)
+# integral_j1_value = fem.assemble_scalar(form)
+j1_local = expr_J1.eval(domain,cells_local)*J1_char*(x_char**2)
 
 J2 = -ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
-J2_func = fem.Function(V_vector_temp)
+#J2_func = fem.Function(V_vector_temp)
 #J2_func = fem.Function(V)
-expr_J2 = fem.Expression(J2, V_vector_temp.element.interpolation_points())
-J2_func.interpolate(expr_J2)
-form = fem.form(J2_func)
-integral_j2_value = fem.assemble_scalar(form)
-j2_local = integral_j2_value *J2_char*(x_char**2)
+expr_J2 = fem.Expression(J2,points)
+#J2_func.interpolate(expr_J2)
+# form = fem.form(J2_func)
+# integral_j2_value = fem.assemble_scalar(form)
+j2_local = expr_J2.eval(domain,cells_local) *J2_char*(x_char**2)
 
 
 
@@ -390,13 +396,12 @@ if MPI.COMM_WORLD.rank == 0:
     j2_combined = np.vstack(j2_gathered)
 
     # print(np.shape(points_combined))
-    sort_indices = np.argsort(points_combined[:, 0])  
+    sort_indices = np.argsort(points_combined[:, 0])
     points_combined = points_combined[sort_indices]
     c1_combined = c1_combined[sort_indices]
     c2_combined = c2_combined[sort_indices]
     phi_combined = phi_combined[sort_indices]
-    j1_combined = j1_combined[sort_indices]
-    j2_combined = j2_combined[sort_indices]
+    
     
 
 
@@ -425,6 +430,17 @@ if MPI.COMM_WORLD.rank == 0:
     plt.xlabel("x")
     plt.xscale("linear")
     plt.legend()
+
+
+    fig3 = plt.figure()
+    plt.plot(coords*x_char, j1_combined, "r", linewidth=2, label="j1")
+    plt.plot(coords*x_char, j2_combined, "b", linewidth=2, label="j2")
+    plt.xlabel("x")
+    plt.grid(True)
+    plt.xscale("linear")
+    plt.yscale("linear")
+    plt.legend()
+
     print("Done")
     plt.show()
 
