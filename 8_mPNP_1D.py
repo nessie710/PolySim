@@ -74,7 +74,7 @@ f_char = 1/t_char
 
 c_bulk = 170
 c_bulk_scaled = c_bulk/c_char
-Vapp = 0.3
+Vapp = 0.1
 Vapp_scaled = Vapp/phi_char
 V_bulk = 0
 V_bulk_scaled = V_bulk/phi_char
@@ -118,10 +118,13 @@ fdim = tdim - 1
 domain.topology.create_connectivity(fdim, tdim)
 x = ufl.SpatialCoordinate(domain)
 
-# element_family_vector = basix.ElementFamily.BDM
-# element_degree = 1
-# variant = basix.LagrangeVariant.equispaced
-# vector_el = basix.ufl.element(element_family_vector, domain.topology.cell_name(), element_degree, variant)
+
+element_family_vector = basix.ElementFamily.BDM
+element_degree = 1
+variant = basix.LagrangeVariant.equispaced
+vector_el = basix.ufl.element(element_family_vector, domain.topology.cell_name(), element_degree, variant)
+#vector_el = ufl.VectorElement("Lagrange", domain.ufl_cell(), element_degree)
+
 
 element_family_scalar = basix.ElementFamily.P
 element_degree = 2
@@ -144,12 +147,12 @@ def c0_init(x):
 
 def V0_init(x):
     values = np.zeros((1, x.shape[1]))
-    values[0] = Vapp_scaled
+    values[0] = 0
     return values
 
 u.sub(0).interpolate(c0_init)
 u.sub(1).interpolate(c0_init)
-#u.sub(2).interpolate(V0_init)
+u.sub(2).interpolate(V0_init)
 
 n = ufl.FacetNormal(domain)
 
@@ -231,6 +234,10 @@ bc_c2_bulk = fem.dirichletbc(ud, dofs_bulk, V_split)
 bcs = [bc_potential_bulk, bc_potential_surface, bc_c1_bulk, bc_c2_bulk]
 
 
+
+# SET PROBLEM
+
+
 class NonlinearPDE_SNESProblem:
     def __init__(self, F, u, bc):
         V = u.function_space
@@ -279,7 +286,7 @@ problem = NonlinearPDE_SNESProblem(F, u, bcs)
 b = dolfinx.la.create_petsc_vector(V.dofmap.index_map, V.dofmap.index_map_bs)
 J =fem.petsc.create_matrix(problem.a)
 
-# Create Newton solver and solve
+# Create SNES solver and solve
 snes = PETSc.SNES().create()
 snes.setFunction(problem.F, b)
 snes.setJacobian(problem.J, J)
@@ -298,7 +305,7 @@ dolfinx.log.set_log_level(dolfinx.cpp.log.LogLevel.INFO)
 
 snes.solve(None, x)
 assert snes.getConvergedReason() > 0
-#assert snes.getIterationNumber() < 6
+
 
 
 
@@ -340,10 +347,33 @@ phi_local = u.sub(2).eval(points_on_proc, cells)*phi_char
 
 
 
+J1 = -ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
+V_vector_temp = fem.functionspace(domain, vector_el)
+J1_func = fem.Function(V_vector_temp)
+#J1_func = fem.Function(V)
+expr_J1 = fem.Expression(J1, V_vector_temp.element.interpolation_points())
+J1_func.interpolate(expr_J1)
+form = fem.form(J1_func)
+integral_j1_value = fem.assemble_scalar(form)
+j1_local = integral_j1_value*J1_char*(x_char**2)
+
+J2 = -ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
+J2_func = fem.Function(V_vector_temp)
+#J2_func = fem.Function(V)
+expr_J2 = fem.Expression(J2, V_vector_temp.element.interpolation_points())
+J2_func.interpolate(expr_J2)
+form = fem.form(J2_func)
+integral_j2_value = fem.assemble_scalar(form)
+j2_local = integral_j2_value *J2_char*(x_char**2)
+
+
+
+
 c1_gathered = comm.gather(c1_local,root=0)
 c2_gathered = comm.gather(c2_local,root=0)
 phi_gathered = comm.gather(phi_local,root=0)
-
+j1_gathered = comm.gather(j1_local, root=0)
+j2_gathered = comm.gather(j2_local, root=0)
 
 
 if MPI.COMM_WORLD.rank == 0:  
@@ -356,14 +386,22 @@ if MPI.COMM_WORLD.rank == 0:
     c1_combined = np.vstack(c1_gathered)
     c2_combined = np.vstack(c2_gathered)
     phi_combined = np.vstack(phi_gathered)
+    j1_combined = np.vstack(j1_gathered)
+    j2_combined = np.vstack(j2_gathered)
 
-    print(np.shape(points_combined))
+    # print(np.shape(points_combined))
     sort_indices = np.argsort(points_combined[:, 0])  
     points_combined = points_combined[sort_indices]
     c1_combined = c1_combined[sort_indices]
     c2_combined = c2_combined[sort_indices]
     phi_combined = phi_combined[sort_indices]
+    j1_combined = j1_combined[sort_indices]
+    j2_combined = j2_combined[sort_indices]
     
+
+
+
+
     print("Simulated concentration")
     print(c2_combined[0])
     print("Theoretical concentration")
@@ -375,8 +413,6 @@ if MPI.COMM_WORLD.rank == 0:
     plt.plot(points_combined[:, 0]*x_char, c2_combined, "b", linewidth=2, label="c2")
     plt.plot(points_combined[:,0]*x_char, c_bulk*np.exp(phi_combined/(k*T/q)) / (1- 2*NA*d**3*c_bulk + 2*NA*d**3*c_bulk*np.cosh(phi_combined/(k*T/q))), "green", label="c2 theoretical")
     plt.xscale("linear")
-    #plt.xlim([0,0.2e-8])
-    # plt.yscale("log")
 
     plt.grid(True)
     plt.xlabel("x")
@@ -391,6 +427,9 @@ if MPI.COMM_WORLD.rank == 0:
     plt.legend()
     print("Done")
     plt.show()
+
+
+
 
 
 
