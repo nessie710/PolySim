@@ -67,7 +67,7 @@ f_char = 1/t_char
 
 c_bulk = 170
 c_bulk_scaled = c_bulk/c_char
-Vapp = 0.2
+Vapp = 0.1
 Vapp_scaled = Vapp/phi_char
 V_bulk = 0
 V_bulk_scaled = V_bulk/phi_char
@@ -95,7 +95,7 @@ except ImportError:
     
 # Define Mesh
 
-domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=50000)
+domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=5000000)
 topology, geometry = domain.topology, domain.geometry
 eps = ufl.Constant(domain, np.finfo(float).eps)
 cluster = ipp.Cluster(engines="mpi", n=1)
@@ -177,7 +177,7 @@ supg2 = ufl.inner(ufl.div(ufl.grad(c2) - c2 * ufl.grad(phi) + (c2/(1-c1-c2))*(uf
 # L2 = 0.5*(v2*ufl.div(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2)) + 2*ufl.inner(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2),ufl.grad(v2)))
 # supg = ufl.div(-ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)))*tau*L1*ufl.dx + ufl.div(-ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)))*tau*L2*ufl.dx
 
-F = F7 + F8 + F9 + supg1 + supg2
+F = F7 + F8 + F9 #+ supg1 + supg2
 
 # SET BOUNDARY CONDITIONS 
 def boundary_R(x):
@@ -220,14 +220,14 @@ bcs = [bc_potential_bulk, bc_potential_surface, bc_c1_bulk, bc_c2_bulk]
 problem = NonlinearProblem(F, u, bcs = bcs)
 solver = NewtonSolver(MPI.COMM_WORLD, problem)
 solver.convergence_criterion = "incremental"
-solver.rtol = np.sqrt(np.finfo(default_real_type).eps) 
+solver.rtol = np.sqrt(np.finfo(default_real_type).eps)
 solver.max_it = 200
 
 ksp = solver.krylov_solver
 opts = PETSc.Options()  
 option_prefix = ksp.getOptionsPrefix()
 opts[f"{option_prefix}ksp_type"] = "gmres"
-opts[f"{option_prefix}pc_type"] = "lu"
+opts[f"{option_prefix}pc_type"] = "gamg"
 sys = PETSc.Sys()  
 opts[f"{option_prefix}pc_factor_mat_solver_type"] = "mumps"
 ksp.setFromOptions()
