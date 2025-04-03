@@ -36,7 +36,14 @@ print(PETSc.ScalarType)
 from boundary_conditions import assemble_boundary_conditions_stationary, assemble_boundary_conditions_AC
 from PNP_equation_sets import assemble_stationary_problem, assemble_AC_problem
 from extract_cutlines import extract_central_cutline_1D
+import ufl
+from dolfinx import default_real_type
+from dolfinx.fem import Function, dirichletbc, form, functionspace, locate_dofs_geometrical
+from dolfinx.mesh import create_unit_square
+from ufl import TestFunction, TrialFunction, derivative, dx, grad, inner
 
+from dolfinx.fem.petsc import (assemble_matrix, assemble_vector,
+                               create_matrix)
 
 def mpi_print(s):
     print(f"Rank {MPI.COMM_WORLD.rank}: {s}", flush=True)
@@ -67,7 +74,7 @@ f_char = 1/t_char
 
 c_bulk = 170
 c_bulk_scaled = c_bulk/c_char
-Vapp = 0.1
+Vapp = 0.3
 Vapp_scaled = Vapp/phi_char
 V_bulk = 0
 V_bulk_scaled = V_bulk/phi_char
@@ -95,7 +102,7 @@ except ImportError:
     
 # Define Mesh
 
-domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=5000000)
+domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=500000)
 topology, geometry = domain.topology, domain.geometry
 eps = ufl.Constant(domain, np.finfo(float).eps)
 cluster = ipp.Cluster(engines="mpi", n=1)
@@ -134,8 +141,15 @@ def c0_init(x):
     values[0] = c_bulk_scaled
     return values
 
+
+def V0_init(x):
+    values = np.zeros((1, x.shape[1]))
+    values[0] = Vapp_scaled
+    return values
+
 u.sub(0).interpolate(c0_init)
 u.sub(1).interpolate(c0_init)
+#u.sub(2).interpolate(V0_init)
 
 n = ufl.FacetNormal(domain)
 
@@ -153,22 +167,22 @@ F9 = ufl.inner(-ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)
 #F9_normal = ufl.inner(-D2*ufl.grad(c1) + (D2/(k*T/q))*c2 * ufl.grad(phi) - (NA*d**3*c2/(1-NA*d**3*c1-NA*d**3*c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v2)) * ufl.dx
 
 
-hk = ufl.CellDiameter(domain)
-b = - ufl.grad(D1/x_char * phi)
+# hk = ufl.CellDiameter(domain)
+# b = - ufl.grad(D1/x_char * phi)
 
-def psi(q):
-    return ufl.conditional(q > 1, 1, q)
+# def psi(q):
+#     return ufl.conditional(q > 1, 1, q)
 
-nb = ufl.sqrt(ufl.dot(b,b))
+# nb = ufl.sqrt(ufl.dot(b,b))
 
-Pe = 0.33*nb*hk/(2*D1)
+# Pe = 0.33*nb*hk/(2*D1)
 
-sigma = hk/(2*nb)*psi(Pe)
-v1_supg = ufl.inner(sigma*b, ufl.grad(v1))
-v2_supg = ufl.inner(sigma*b, ufl.grad(v2))
+# sigma = hk/(2*nb)*psi(Pe)
+# v1_supg = ufl.inner(sigma*b, ufl.grad(v1))
+# v2_supg = ufl.inner(sigma*b, ufl.grad(v2))
 
-supg1 = ufl.inner(ufl.div(ufl.grad(c1) + c1 * ufl.grad(phi) + (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))), v1_supg) * ufl.dx
-supg2 = ufl.inner(ufl.div(ufl.grad(c2) - c2 * ufl.grad(phi) + (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))), v2_supg) * ufl.dx
+# supg1 = ufl.inner(ufl.div(ufl.grad(c1) + c1 * ufl.grad(phi) + (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))), v1_supg) * ufl.dx
+# supg2 = ufl.inner(ufl.div(ufl.grad(c2) - c2 * ufl.grad(phi) + (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))), v2_supg) * ufl.dx
 
 # b      = (1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
 # nb     = ufl.sqrt(ufl.dot(b,b))
@@ -217,27 +231,100 @@ bc_c2_bulk = fem.dirichletbc(ud, dofs_bulk, V_split)
 bcs = [bc_potential_bulk, bc_potential_surface, bc_c1_bulk, bc_c2_bulk]
 
 
-problem = NonlinearProblem(F, u, bcs = bcs)
-solver = NewtonSolver(MPI.COMM_WORLD, problem)
-solver.convergence_criterion = "incremental"
-solver.rtol = np.sqrt(np.finfo(default_real_type).eps)
-solver.max_it = 200
+class NonlinearPDE_SNESProblem:
+    def __init__(self, F, u, bc):
+        V = u.function_space
+        du = TrialFunction(V)
+        self.L = form(F)
+        self.a = form(derivative(F, u, du))
+        self.bc = bc
+        self._F, self._J = None, None
+        self.u = u
 
-ksp = solver.krylov_solver
-opts = PETSc.Options()  
-option_prefix = ksp.getOptionsPrefix()
-opts[f"{option_prefix}ksp_type"] = "gmres"
-opts[f"{option_prefix}pc_type"] = "gamg"
-sys = PETSc.Sys()  
-opts[f"{option_prefix}pc_factor_mat_solver_type"] = "mumps"
-ksp.setFromOptions()
+    def F(self, snes, x, F):
+        """Assemble residual vector."""
+        from petsc4py import PETSc
 
+        from dolfinx.fem.petsc import apply_lifting, assemble_vector, set_bc
+
+        x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
+        x.copy(self.u.x.petsc_vec)
+        self.u.x.petsc_vec.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
+
+        with F.localForm() as f_local:
+            f_local.set(0.0)
+        assemble_vector(F, self.L)
+        apply_lifting(F, [self.a], bcs=[self.bc], x0=[x], alpha=-1.0)
+        F.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+        set_bc(F, self.bc, x, -1.0)
+
+    def J(self, snes, x, J, P):
+        """Assemble Jacobian matrix."""
+        from petsc4py import PETSc
+
+        from dolfinx.fem.petsc import assemble_matrix
+
+        x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
+        x.copy(self.u.x.petsc_vec)
+        self.u.x.petsc_vec.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
+
+        J.zeroEntries()
+        assemble_matrix(J, self.a, bcs=self.bc)
+        J.assemble()
+
+
+# Create nonlinear problem
+problem = NonlinearPDE_SNESProblem(F, u, bcs)
+
+b = dolfinx.la.create_petsc_vector(V.dofmap.index_map, V.dofmap.index_map_bs)
+J =fem.petsc.create_matrix(problem.a)
+
+# Create Newton solver and solve
+snes = PETSc.SNES().create()
+snes.setFunction(problem.F, b)
+snes.setJacobian(problem.J, J)
+
+snes.setTolerances(rtol=1.0e-9, max_it=200)
+snes.getKSP().setType("gmres")
+snes.getKSP().setTolerances(rtol=1.0e-9)
+snes.getKSP().getPC().setType("lu")
+
+# For SNES line search to function correctly it is necessary that the
+# u.x.petsc_vec in the Jacobian and residual is *not* passed to
+# snes.solve.
+x = u.x.petsc_vec.copy()
+x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 dolfinx.log.set_log_level(dolfinx.cpp.log.LogLevel.INFO)
 
+snes.solve(None, x)
+assert snes.getConvergedReason() > 0
+#assert snes.getIterationNumber() < 6
 
 
-# SOLVE PROBLEM AND PROPAGATE TO GHOSTS
-solver.solve(u)
+
+
+
+# problem = NonlinearProblem(F, u, bcs = bcs)
+# solver = NewtonSolver(MPI.COMM_WORLD, problem)
+# solver.convergence_criterion = "incremental"
+# solver.rtol = np.sqrt(np.finfo(default_real_type).eps)*1e-2
+# solver.max_it = 200
+
+# ksp = solver.krylov_solver
+# opts = PETSc.Options()  
+# option_prefix = ksp.getOptionsPrefix()
+# opts[f"{option_prefix}ksp_type"] = "fgmres"
+# opts[f"{option_prefix}pc_type"] = "lu"
+# sys = PETSc.Sys()  
+# opts[f"{option_prefix}pc_factor_mat_solver_type"] = "mumps"
+# ksp.setFromOptions()
+
+# dolfinx.log.set_log_level(dolfinx.cpp.log.LogLevel.INFO)
+
+
+
+# # SOLVE PROBLEM AND PROPAGATE TO GHOSTS
+# solver.solve(u)
 u.x.scatter_forward()
 
 
