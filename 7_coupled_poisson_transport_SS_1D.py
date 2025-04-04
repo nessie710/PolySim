@@ -32,7 +32,7 @@ import basix.ufl
 from dolfinx.fem.petsc import NonlinearProblem, LinearProblem
 from dolfinx.nls.petsc import NewtonSolver
 print(PETSc.ScalarType)
-assert np.dtype(PETSc.ScalarType).kind == 'c'
+#assert np.dtype(PETSc.ScalarType).kind == 'c'
 from boundary_conditions import assemble_boundary_conditions_stationary, assemble_boundary_conditions_AC
 from PNP_equation_sets import assemble_stationary_problem, assemble_AC_problem
 from extract_cutlines import extract_central_cutline_1D
@@ -218,10 +218,36 @@ phi_local = u.sub(2).eval(points_on_proc, cells)*phi_char
 
 
 
+points = np.array([[0.5]], dtype=np.float64)
+num_cells_local = domain.topology.index_map(domain.topology.dim).size_local
+cells_local = range(0,num_cells_local)
+
+x_expr = dolfinx.fem.Expression(ufl.SpatialCoordinate(domain), points)
+coords = x_expr.eval(domain, cells_local)
+J1 = -ufl.grad(c1) - c1 * ufl.grad(phi)
+#V_vector_temp = fem.functionspace(domain, scalar_el)
+#J1_func = fem.Function(V_vector_temp)
+#J1_func = fem.Function(V)
+expr_J1 = fem.Expression(J1, points)
+#J1_func.interpolate(expr_J1)
+# form = fem.form(J1_func)
+# integral_j1_value = fem.assemble_scalar(form)
+j1_local = expr_J1.eval(domain,cells_local)*J1_char*(x_char**2)
+
+J2 = -ufl.grad(c2) + c2 * ufl.grad(phi)
+#J2_func = fem.Function(V_vector_temp)
+#J2_func = fem.Function(V)
+expr_J2 = fem.Expression(J2,points)
+#J2_func.interpolate(expr_J2)
+# form = fem.form(J2_func)
+# integral_j2_value = fem.assemble_scalar(form)
+j2_local = expr_J2.eval(domain,cells_local) *J2_char*(x_char**2)
+
 c1_gathered = comm.gather(c1_local,root=0)
 c2_gathered = comm.gather(c2_local,root=0)
 phi_gathered = comm.gather(phi_local,root=0)
-
+j1_gathered = comm.gather(j1_local, root=0)
+j2_gathered = comm.gather(j2_local, root=0)
 
 
 if MPI.COMM_WORLD.rank == 0:  
@@ -234,6 +260,9 @@ if MPI.COMM_WORLD.rank == 0:
     c1_combined = np.vstack(c1_gathered)
     c2_combined = np.vstack(c2_gathered)
     phi_combined = np.vstack(phi_gathered)
+    j1_combined = np.vstack(j1_gathered)
+    j2_combined = np.vstack(j2_gathered)
+
 
     print(np.shape(points_combined))
     sort_indices = np.argsort(points_combined[:, 0])  
@@ -260,6 +289,17 @@ if MPI.COMM_WORLD.rank == 0:
     plt.xscale("linear")
     plt.legend()
     print("Done")
+
+
+    fig3 = plt.figure()
+    plt.plot(coords*x_char, j1_combined, "r", linewidth=2, label="j1")
+    plt.plot(coords*x_char, j2_combined, "b", linewidth=2, label="j2")
+    plt.xlabel("x")
+    plt.grid(True)
+    plt.xscale("linear")
+    plt.yscale("log")
+    plt.legend()
+
     plt.show()
 
 

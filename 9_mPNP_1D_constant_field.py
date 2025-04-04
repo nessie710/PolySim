@@ -72,21 +72,19 @@ J2_char = q*D2*c_char*NA/x_char
 t_char = x_char**2/D1
 f_char = 1/t_char
 
-c_bulk = 170
-c_bulk_scaled = c_bulk/c_char
-c_surf = 1000
-c_surf_scaled = c_surf/c_char
+
 c_bulk_scaled1 = 0.6
 c_bulk_scaled2 = 0.3
 c_surf_scaled1 = 0.1
 c_surf_scaled2 = 0.6
 Vapp = 0.3
 Vapp_scaled = Vapp/phi_char
+field = 2
 V_bulk = 0
 V_bulk_scaled = V_bulk/phi_char
-L = 1e-8
+L = 1e-9
 L_scaled = L/x_char
-print(c_bulk_scaled)
+L_scaled = 1
 
 
 #%%px
@@ -125,13 +123,13 @@ mel = basix.ufl.mixed_element([scalar_el, scalar_el, scalar_el])
 
 V = fem.functionspace(domain, mel)
 
-v1, v2, vphi= ufl.TestFunctions(V)
+v1, v2, vphi = ufl.TestFunctions(V)
 u = fem.Function(V)
 c1, c2, phi= ufl.split(u)
 
 def c0_init(x):
     values = np.zeros((1, x.shape[1]))
-    values[0] = c_bulk_scaled
+    values[0] = c_bulk_scaled1
     return values
 
 
@@ -142,8 +140,20 @@ def V0_init(x):
 
 u.sub(0).interpolate(c0_init)
 u.sub(1).interpolate(c0_init)
-u.sub(2).interpolate(V0_init)
+u.sub(2).interpolate(lambda x: -field*x[0])
+# points_on_proc, cells = extract_central_cutline_1D(domain, L_scaled)
 
+
+# points_gathered = MPI.COMM_WORLD.gather(points_on_proc, root=0)
+# cells_gathered = MPI.COMM_WORLD.gather(cells, root=0)
+
+# c1_local = u.sub(0).eval(points_on_proc, cells)#*c_char
+# c2_local = u.sub(1).eval(points_on_proc, cells)#*c_char
+# phi_local = u.sub(2).eval(points_on_proc, cells)#*phi_char
+
+# plt.figure()
+# plt.plot(points_on_proc[:,0],phi_local)
+# plt.show()
 n = ufl.FacetNormal(domain)
 
 # IMPORT STATIONARY EQUATION SET
@@ -151,39 +161,12 @@ n = ufl.FacetNormal(domain)
 # F1 = -ufl.inner(ufl.grad(c1)[0], v1) * ufl.dx - ufl.inner(c1 * ufl.grad(phi)[0], v1) * ufl.dx - ufl.inner((c1/(1-c1-c2))*(ufl.grad(c1)[0]+ ufl.grad(c2)[0]), v1)*ufl.dx 
 # F2 = -ufl.inner(ufl.grad(c2)[0], v2) * ufl.dx + ufl.inner(c2 * ufl.grad(phi)[0], v2) * ufl.dx - ufl.inner((c2/(1-c1-c2))*(ufl.grad(c1)[0]+ ufl.grad(c2)[0]), v2)*ufl.dx
 
-F7 = ufl.inner(ufl.grad(phi), ufl.grad(vphi)) * ufl.dx - ufl.inner((c1-c2), vphi) * ufl.dx
+#field_const = fem.Constant(domain, default_scalar_type(field))*vphi*dx
+F7 = ufl.div(ufl.grad(phi)) * vphi *ufl.dx
 F8 = ufl.inner(-ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v1)) * ufl.dx
 F9 = ufl.inner(-ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v2)) * ufl.dx
-F8_PNP = ufl.inner(-ufl.grad(c1) - c1 * ufl.grad(phi), ufl.grad(v1)) * ufl.dx
-F9_PNP = ufl.inner(-ufl.grad(c2) + c2 * ufl.grad(phi), ufl.grad(v2)) * ufl.dx
-#F7_normal = ufl.inner(ufl.grad(phi), ufl.grad(vphi)) * ufl.dx - ufl.inner((NA*q/epsilon_w)*(c1-c2), vphi) * ufl.dx
-#F8_normal = ufl.inner(-D1*ufl.grad(c1) - (D1/(k*T/q))*c1 * ufl.grad(phi) - (NA*d**3*c1/(1-NA*d**3*c1-NA*d**3*c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v1)) * ufl.dx
-#F9_normal = ufl.inner(-D2*ufl.grad(c1) + (D2/(k*T/q))*c2 * ufl.grad(phi) - (NA*d**3*c2/(1-NA*d**3*c1-NA*d**3*c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v2)) * ufl.dx
-
-
-# hk = ufl.CellDiameter(domain)
-# b = - ufl.grad(D1/x_char * phi)
-
-# def psi(q):
-#     return ufl.conditional(q > 1, 1, q)
-
-# nb = ufl.sqrt(ufl.dot(b,b))
-
-# Pe = 0.33*nb*hk/(2*D1)
-
-# sigma = hk/(2*nb)*psi(Pe)
-# v1_supg = ufl.inner(sigma*b, ufl.grad(v1))
-# v2_supg = ufl.inner(sigma*b, ufl.grad(v2))
-
-# supg1 = ufl.inner(ufl.div(ufl.grad(c1) + c1 * ufl.grad(phi) + (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))), v1_supg) * ufl.dx
-# supg2 = ufl.inner(ufl.div(ufl.grad(c2) - c2 * ufl.grad(phi) + (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))), v2_supg) * ufl.dx
-
-# b      = (1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
-# nb     = ufl.sqrt(ufl.dot(b,b))
-# tau = 1/ufl.sqrt((2*nb/hk)**2 + (4*D1/(hk**2))**2)
-# L1 = 0.5*(v1*ufl.div(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2)) + 2*ufl.inner(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2),ufl.grad(v1)))
-# L2 = 0.5*(v2*ufl.div(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2)) + 2*ufl.inner(ufl.grad(phi) + (ufl.grad(c1)+ufl.grad(c2))/(1-c1-c2),ufl.grad(v2)))
-# supg = ufl.div(-ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)))*tau*L1*ufl.dx + ufl.div(-ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)))*tau*L2*ufl.dx
+# F8_PNP = ufl.inner(-ufl.grad(c1) - c1 * ufl.grad(phi), ufl.grad(v1)) * ufl.dx
+# F9_PNP = ufl.inner(-ufl.grad(c2) + c2 * ufl.grad(phi), ufl.grad(v2)) * ufl.dx
 
 F = F7 + F8 + F9 #+ supg1 + supg2
 
@@ -193,18 +176,6 @@ def boundary_R(x):
 
 def boundary_L(x):
     return np.isclose(x[0], 0)
-
-V_split = V.sub(2)
-V_potential, _ = V_split.collapse()
-ud = fem.Function(V_potential)
-ud.interpolate(lambda x : x[0]*0 + V_bulk_scaled)
-dofs_bulk = fem.locate_dofs_geometrical((V_split,V_potential), boundary_R)
-bc_potential_bulk = fem.dirichletbc(ud, dofs_bulk, V_split)
-
-ud = fem.Function(V_potential)
-ud.interpolate(lambda x : x[0]*0 + Vapp_scaled)
-dofs_surface = fem.locate_dofs_geometrical((V_split,V_potential),boundary_L)
-bc_potential_surface = fem.dirichletbc(ud, dofs_surface, V_split)
 
 
 V_split = V.sub(0)
@@ -238,7 +209,7 @@ ud.interpolate(lambda x : x[0]*0 + c_surf_scaled2)
 dofs_bulk = fem.locate_dofs_geometrical((V_split,V_c2), boundary_L)
 bc_c2_surf = fem.dirichletbc(ud, dofs_bulk, V_split)  
 
-bcs = [bc_potential_bulk, bc_potential_surface, bc_c1_bulk, bc_c2_bulk, bc_c1_surf, bc_c2_surf]
+bcs = [ bc_c1_bulk, bc_c2_bulk, bc_c1_surf, bc_c2_surf]
 
 print(np.shape(V.sub(0).element.interpolation_points()))
 print(V.sub(0).element.interpolation_points())
@@ -312,7 +283,7 @@ x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 dolfinx.log.set_log_level(dolfinx.cpp.log.LogLevel.INFO)
 
 snes.solve(None, x)
-assert snes.getConvergedReason() > 0
+print(snes.getConvergedReason()) 
 
 
 
@@ -328,7 +299,7 @@ assert snes.getConvergedReason() > 0
 # ksp = solver.krylov_solver
 # opts = PETSc.Options()  
 # option_prefix = ksp.getOptionsPrefix()
-# opts[f"{option_prefix}ksp_type"] = "fgmres"
+# opts[f"{option_prefix}ksp_type"] = "preonly"
 # opts[f"{option_prefix}pc_type"] = "lu"
 # sys = PETSc.Sys()  
 # opts[f"{option_prefix}pc_factor_mat_solver_type"] = "mumps"
@@ -381,6 +352,9 @@ expr_J2 = fem.Expression(J2,points)
 j2_local = expr_J2.eval(domain,cells_local) #*J2_char*(x_char**2)
 
 
+expr_field = fem.Expression(-ufl.grad(phi), points)
+field_local = expr_field.eval(domain, cells_local)
+
 
 
 c1_gathered = comm.gather(c1_local,root=0)
@@ -388,7 +362,7 @@ c2_gathered = comm.gather(c2_local,root=0)
 phi_gathered = comm.gather(phi_local,root=0)
 j1_gathered = comm.gather(j1_local, root=0)
 j2_gathered = comm.gather(j2_local, root=0)
-
+field_gathered = comm.gather(field_local, root=0)
 
 if MPI.COMM_WORLD.rank == 0:  
 
@@ -402,6 +376,7 @@ if MPI.COMM_WORLD.rank == 0:
     phi_combined = np.vstack(phi_gathered)
     j1_combined = np.vstack(j1_gathered)
     j2_combined = np.vstack(j2_gathered)
+    field_combined = np.vstack(field_gathered)
 
     # print(np.shape(points_combined))
     sort_indices = np.argsort(points_combined[:, 0])
@@ -417,10 +392,10 @@ if MPI.COMM_WORLD.rank == 0:
 
     print("Simulated concentration")
     print(c2_combined[0])
-    print("Theoretical concentration")
-    print(c_bulk*np.exp(phi_combined[0]/(k*T/q)) / (1- 2*NA*d**3*c_bulk + 2*NA*d**3*c_bulk*np.cosh(phi_combined[0]/(k*T/q))))
-    print("PNP concentration")
-    print(c_bulk*np.exp(phi_combined[0]/(k*T/q)))
+    #print("Theoretical concentration")
+    # print(c_bulk*np.exp(phi_combined[0]/(k*T/q)) / (1- 2*NA*d**3*c_bulk + 2*NA*d**3*c_bulk*np.cosh(phi_combined[0]/(k*T/q))))
+    # print("PNP concentration")
+    #print(c_bulk*np.exp(phi_combined[0]/(k*T/q)))
     fig = plt.figure()
     plt.plot(points_combined[:, 0]*x_char, c1_combined, "k", linewidth=2, label="c1")
     plt.plot(points_combined[:, 0]*x_char, c2_combined, "b", linewidth=2, label="c2")
@@ -448,6 +423,18 @@ if MPI.COMM_WORLD.rank == 0:
     plt.xscale("linear")
     plt.yscale("linear")
     plt.legend()
+
+
+    print(np.shape(phi_combined))
+
+    fig4 = plt.figure()
+    plt.plot(points_combined[:, 0], np.gradient(phi_combined[: ,0]), "red", linewidth=2, label="Field")
+    plt.xlabel("x")
+    plt.grid(True)
+    plt.xscale("linear")
+    plt.yscale("linear")
+    plt.legend()
+
 
     print("Done")
     plt.show()
