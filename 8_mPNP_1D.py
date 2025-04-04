@@ -110,12 +110,6 @@ domain.topology.create_connectivity(fdim, tdim)
 x = ufl.SpatialCoordinate(domain)
 
 
-# element_family_vector = basix.ElementFamily.BDM
-# element_degree = 1
-# variant = basix.LagrangeVariant.equispaced
-# vector_el = basix.ufl.element(element_family_vector, domain.topology.cell_name(), element_degree, variant)
-
-
 element_family_scalar = basix.ElementFamily.P
 element_degree = 2
 variant = basix.LagrangeVariant.equispaced
@@ -447,6 +441,13 @@ if MPI.COMM_WORLD.rank == 0:
     plt.grid(True)
     plt.xscale("linear")
     plt.yscale("linear")
+    plt.legend()
+
+    fig4 = plt.figure()
+    plt.plot(points_combined[:, 0]*x_char, np.gradient(phi_combined[:,0]), "r", linewidth=2, label="field")
+    plt.grid(True)
+    plt.xlabel("x")
+    plt.xscale("linear")
     plt.legend()
 
     print("Done")
