@@ -73,7 +73,7 @@ def simulate_mPNP(Vapp, Vbulk, concentrations):
         
     # Define Mesh
 
-    domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=50000)
+    domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=5000)
     topology, geometry = domain.topology, domain.geometry
     eps = ufl.Constant(domain, np.finfo(float).eps)
     # cluster = ipp.Cluster(engines="mpi", n=1)
