@@ -26,26 +26,26 @@ from lib06_snes import NonlinearPDE_SNESProblem
 def mpi_print(s):
     print(f"Rank {MPI.COMM_WORLD.rank}: {s}", flush=True)
 
+# Constants
 
+epsilon0 = 8.8541878128e-12
+epsilon_r_w = 80
+epsilon_w = epsilon_r_w*epsilon0
+q = 1.60217e-19
+NA = 6.02214076e23
+k = 1.380649e-23
+T = 300
 
-def simulate_mPNP(Vapp, Vbulk, concentrations):
-    # Constants
+def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
 
-    epsilon0 = 8.8541878128e-12
-    epsilon_r_w = 80
-    epsilon_w = epsilon_r_w*epsilon0
-    q = 1.60217e-19
-    NA = 6.02214076e23
-    k = 1.380649e-23
-    T = 300
 
     #VARIABLES (EDITABLE)
     D1 = 1e-9
     D2 = 1e-9
     c_bulk_scaled1 = concentrations.c_bulk_scaled1
-    c_bulk_scaled2 = concentrations.c_bulk_scaled1
-    c_surf_scaled1 = concentrations.c_bulk_scaled1
-    c_surf_scaled2 = concentrations.c_bulk_scaled1
+    c_bulk_scaled2 = concentrations.c_bulk_scaled2
+    c_surf_scaled1 = concentrations.c_surf_scaled1
+    c_surf_scaled2 = concentrations.c_surf_scaled2
     c_bulk = concentrations.c_bulk
     Vapp = Vapp
     V_bulk = Vbulk
@@ -73,7 +73,7 @@ def simulate_mPNP(Vapp, Vbulk, concentrations):
         
     # Define Mesh
 
-    domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=5000)
+    domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=50000)
     topology, geometry = domain.topology, domain.geometry
     eps = ufl.Constant(domain, np.finfo(float).eps)
     # cluster = ipp.Cluster(engines="mpi", n=1)
@@ -241,12 +241,13 @@ def simulate_mPNP(Vapp, Vbulk, concentrations):
 
     points = np.array([[0.5]], dtype=np.float64)
     num_cells_local = domain.topology.index_map(domain.topology.dim).size_local
-    cells_local = range(0,num_cells_local)
+    cells_local = range(0,num_cells_local-1)
 
     x_expr = dolfinx.fem.Expression(ufl.SpatialCoordinate(domain), points)
     coords = x_expr.eval(domain, cells_local)
+    # coords = coords[0:len(coords)-1]
 
-    points_3D = np.zeros((3,len(coords)))  # Array di 101 punti con 3 colonne (x, y=0, z=0)
+    points_3D = np.zeros((3,len(coords)))  
     points_3D[0] = coords[:,0]
 
     bb_tree = dolfinx.geometry.bb_tree(domain, domain.topology.dim)
@@ -315,43 +316,46 @@ def simulate_mPNP(Vapp, Vbulk, concentrations):
         # print(c_bulk*np.exp(phi_combined[0]/(k*T/q)) / (1- 2*NA*d**3*c_bulk + 2*NA*d**3*c_bulk*np.cosh(phi_combined[0]/(k*T/q))))
         # print("PNP concentration")
         # print(c_bulk*np.exp(phi_combined[0]/(k*T/q)))
-        # fig = plt.figure()
-        # plt.plot(points_combined[:, 0]*x_char, c1_combined, "k", linewidth=2, label="c1")
-        # plt.plot(points_combined[:, 0]*x_char, c2_combined, "b", linewidth=2, label="c2")
-        # #plt.plot(points_combined[:,0]*x_char, c_bulk*np.exp(phi_combined/(k*T/q)) / (1- 2*NA*d**3*c_bulk + 2*NA*d**3*c_bulk*np.cosh(phi_combined/(k*T/q))), "green", label="c2 theoretical")
-        # plt.xscale("linear")
 
-        # plt.grid(True)
-        # plt.xlabel("x")
-        # plt.legend()
-        
+        if plot_flag:
+            fig = plt.figure()
+            plt.plot(points_combined[:, 0]*x_char, c1_combined, "k", linewidth=2, label="c1")
+            plt.plot(points_combined[:, 0]*x_char, c2_combined, "b", linewidth=2, label="c2")
+            #plt.plot(points_combined[:,0]*x_char, c_bulk*np.exp(phi_combined/(k*T/q)) / (1- 2*NA*d**3*c_bulk + 2*NA*d**3*c_bulk*np.cosh(phi_combined/(k*T/q))), "green", label="c2 theoretical")
+            plt.xscale("linear")
 
-        # fig2 = plt.figure()
-        # plt.plot(points_combined[:, 0]*x_char, phi_combined, "r", linewidth=2, label="phi")
-        # plt.grid(True)
-        # plt.xlabel("x")
-        # plt.xscale("linear")
-        # plt.legend()
+            plt.grid(True)
+            plt.xlabel("x")
+            plt.legend()
+            
+
+            fig2 = plt.figure()
+            plt.plot(points_combined[:, 0]*x_char, phi_combined, "r", linewidth=2, label="phi")
+            plt.grid(True)
+            plt.xlabel("x")
+            plt.xscale("linear")
+            plt.legend()
 
 
-        # fig3 = plt.figure()
-        # plt.plot(coords*x_char, j1_combined+j2_combined, "black", linewidth=2, label="j1")
-        # #plt.plot(coords*x_char, j2_combined, "b", linewidth=2, label="j2")
-        # plt.xlabel("x")
-        # plt.grid(True)
-        # plt.xscale("linear")
-        # plt.yscale("linear")
-        # plt.legend()
+            fig3 = plt.figure()
+            plt.plot(coords*x_char, j1_combined+j2_combined, "black", linewidth=2, label="jtot")
+            plt.plot(coords*x_char, j1_combined, "r", linewidth=2, label="j1")
+            plt.plot(coords*x_char, j2_combined, "b", linewidth=2, label="j2")
+            plt.xlabel("x")
+            plt.grid(True)
+            plt.xscale("linear")
+            plt.yscale("linear")
+            plt.legend()
 
-        # fig4 = plt.figure()
-        # plt.plot(points_combined[:, 0]*x_char, np.gradient(phi_combined[:,0]), "r", linewidth=2, label="field")
-        # plt.grid(True)
-        # plt.xlabel("x")
-        # plt.xscale("linear")
-        # plt.legend()
+            fig4 = plt.figure()
+            plt.plot(points_combined[:, 0]*x_char, np.gradient(phi_combined[:,0]), "r", linewidth=2, label="field")
+            plt.grid(True)
+            plt.xlabel("x")
+            plt.xscale("linear")
+            plt.legend()
 
-        # print("Done")
-        # plt.show()
+            print("Done")
+            plt.show()
 
         column_names = ["x", "Potential", "J1", "J2", "C1", "C2"]
         data = np.hstack((coords, phi_combined, j1_combined, j2_combined, c1_combined, c2_combined))
@@ -365,3 +369,18 @@ def simulate_mPNP(Vapp, Vbulk, concentrations):
 
 
 
+
+if __name__ == "__main__":
+    class Concentration_BC():
+        def __init__(self,c_bulk, c_bulk1, c_bulk2, c_surf1, c_surf2, use_surf_bc):
+            self.c_bulk = c_bulk
+            self.c_bulk_scaled1 = c_bulk1
+            self.c_bulk_scaled2 = c_bulk2
+            self.c_surf_scaled1 = c_surf1
+            self.c_surf_scaled2 = c_surf2
+            self.use_surf_bc = use_surf_bc
+
+    # Simulation conditions
+    Vapp = k*T/q
+    concentrations = Concentration_BC(170, c_bulk1=0.4, c_bulk2=0.4, c_surf1=0.8, c_surf2=0.1, use_surf_bc=True)
+    simulate_mPNP(Vapp, 0,concentrations, True)

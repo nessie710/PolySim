@@ -18,7 +18,7 @@ concentrations = Concentration_BC(170, 0.6, 0.1, 0.3, 0.6, False)
 data = []
 
 for vapp in Vapp:
-    data.append(simulator.simulate_mPNP(vapp, 0,concentrations))
+    data.append(simulator.simulate_mPNP(vapp, 0,concentrations, plot_flag=False))
     print("Vapp = "+ str(vapp))
 
 
