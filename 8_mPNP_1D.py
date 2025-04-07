@@ -66,6 +66,7 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
     Vapp_scaled = Vapp/phi_char
     V_bulk_scaled = V_bulk/phi_char
     L_scaled = L/x_char
+    L_scaled = 1
 
 
 
@@ -105,20 +106,20 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
 
 
     # Initial conditions
-    def c0_init(x):
-        values = np.zeros((1, x.shape[1]))
-        values[0] = c_bulk_scaled
-        return values
+    # def c0_init(x):
+    #     values = np.zeros((1, x.shape[1]))
+    #     values[0] = c_bulk_scaled
+    #     return values
 
 
-    def V0_init(x):
-        values = np.zeros((1, x.shape[1]))
-        values[0] = 0
-        return values
+    # def V0_init(x):
+    #     values = np.zeros((1, x.shape[1]))
+    #     values[0] = 0
+    #     return values
 
-    u.sub(0).interpolate(c0_init)
-    u.sub(1).interpolate(c0_init)
-    u.sub(2).interpolate(V0_init)
+    # u.sub(0).interpolate(c0_init)
+    # u.sub(1).interpolate(c0_init)
+    # u.sub(2).interpolate(V0_init)
 
     n = ufl.FacetNormal(domain)
 
@@ -128,9 +129,11 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
     # F2 = -ufl.inner(ufl.grad(c2)[0], v2) * ufl.dx + ufl.inner(c2 * ufl.grad(phi)[0], v2) * ufl.dx - ufl.inner((c2/(1-c1-c2))*(ufl.grad(c1)[0]+ ufl.grad(c2)[0]), v2)*ufl.dx
 
     F7 = ufl.inner(ufl.grad(phi), ufl.grad(vphi)) * ufl.dx - ufl.inner((c1-c2), vphi) * ufl.dx
-    F8 = ufl.inner(-ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v1)) * ufl.dx
-    F9 = ufl.inner(-ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v2)) * ufl.dx
-    F = F7 + F8 + F9
+    F8 = ufl.inner(-0.5*ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v1)) * ufl.dx
+    F9 = ufl.inner(-0.5*ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v2)) * ufl.dx
+    F8_SS =  ufl.inner(-0.5*ufl.grad(c1) - c1 * ufl.grad(phi) +c1*(c1-c2)*ufl.grad(phi), ufl.grad(v1)) * ufl.dx
+    F9_SS = ufl.inner(-0.5*ufl.grad(c2) +c2*ufl.grad(phi) +c2*(c1-c2)*ufl.grad(phi), ufl.grad(v2))*ufl.dx
+    F = F7 + F8_SS + F9_SS
 
     # SET BOUNDARY CONDITIONS 
     def boundary_R(x):
@@ -142,12 +145,12 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
     V_split = V.sub(2)
     V_potential, _ = V_split.collapse()
     ud = fem.Function(V_potential)
-    ud.interpolate(lambda x : x[0]*0 + V_bulk_scaled)
+    ud.interpolate(lambda x : x[0]*0 + Vapp_scaled)
     dofs_bulk = fem.locate_dofs_geometrical((V_split,V_potential), boundary_R)
     bc_potential_bulk = fem.dirichletbc(ud, dofs_bulk, V_split)
 
     ud = fem.Function(V_potential)
-    ud.interpolate(lambda x : x[0]*0 + Vapp_scaled)
+    ud.interpolate(lambda x : x[0]*0 + V_bulk_scaled )
     dofs_surface = fem.locate_dofs_geometrical((V_split,V_potential),boundary_L)
     bc_potential_surface = fem.dirichletbc(ud, dofs_surface, V_split)
 
@@ -156,7 +159,7 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
         V_split = V.sub(0)
         V_c1, _ = V_split.collapse()
         ud = fem.Function(V_c1)
-        ud.interpolate(lambda x : x[0]*0 + c_bulk_scaled1)
+        ud.interpolate(lambda x : x[0]*0 + c_surf_scaled1)
         dofs_bulk = fem.locate_dofs_geometrical((V_split,V_c1), boundary_R)
         bc_c1_bulk = fem.dirichletbc(ud, dofs_bulk, V_split)
 
@@ -164,7 +167,7 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
         V_split = V.sub(1)
         V_c2, _ = V_split.collapse()
         ud = fem.Function(V_c2)
-        ud.interpolate(lambda x : x[0]*0 + c_bulk_scaled2)
+        ud.interpolate(lambda x : x[0]*0 + c_surf_scaled2)
         dofs_bulk = fem.locate_dofs_geometrical((V_split,V_c2), boundary_R)
         bc_c2_bulk = fem.dirichletbc(ud, dofs_bulk, V_split)  
 
@@ -172,7 +175,7 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
         V_split = V.sub(0)
         V_c1, _ = V_split.collapse()
         ud = fem.Function(V_c1)
-        ud.interpolate(lambda x : x[0]*0 + c_surf_scaled1)
+        ud.interpolate(lambda x : x[0]*0 + c_bulk_scaled1 )
         dofs_bulk = fem.locate_dofs_geometrical((V_split,V_c1), boundary_L)
         bc_c1_surf = fem.dirichletbc(ud, dofs_bulk, V_split)
 
@@ -180,7 +183,7 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
         V_split = V.sub(1)
         V_c2, _ = V_split.collapse()
         ud = fem.Function(V_c2)
-        ud.interpolate(lambda x : x[0]*0 + c_surf_scaled2)
+        ud.interpolate(lambda x : x[0]*0 + c_bulk_scaled2 )
         dofs_bulk = fem.locate_dofs_geometrical((V_split,V_c2), boundary_L)
         bc_c2_surf = fem.dirichletbc(ud, dofs_bulk, V_split)  
 
@@ -190,7 +193,7 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
         V_c1, _ = V_split.collapse()
         ud = fem.Function(V_c1)
         ud.interpolate(lambda x : x[0]*0 + c_bulk_scaled)
-        dofs_bulk = fem.locate_dofs_geometrical((V_split,V_c1), boundary_R)
+        dofs_bulk = fem.locate_dofs_geometrical((V_split,V_c1), boundary_L)
         bc_c1_bulk = fem.dirichletbc(ud, dofs_bulk, V_split)
 
 
@@ -198,7 +201,7 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
         V_c2, _ = V_split.collapse()
         ud = fem.Function(V_c2)
         ud.interpolate(lambda x : x[0]*0 + c_bulk_scaled)
-        dofs_bulk = fem.locate_dofs_geometrical((V_split,V_c2), boundary_R)
+        dofs_bulk = fem.locate_dofs_geometrical((V_split,V_c2), boundary_L)
         bc_c2_bulk = fem.dirichletbc(ud, dofs_bulk, V_split)  
 
         bcs = [bc_potential_bulk, bc_potential_surface, bc_c1_bulk, bc_c2_bulk]
@@ -269,17 +272,19 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
 
     # print(np.shape(points_gathered))
     # print(np.shape(cells_gathered))
-    c1_local = u.sub(0).eval(points_gathered[0], cells_gathered[0])*c_char
-    c2_local = u.sub(1).eval(points_gathered[0], cells_gathered[0])*c_char
-    phi_local = u.sub(2).eval(points_gathered[0], cells_gathered[0])*phi_char
+    c1_local = u.sub(0).eval(points_gathered[0], cells_gathered[0])#*c_char
+    c2_local = u.sub(1).eval(points_gathered[0], cells_gathered[0])#*c_char
+    phi_local = u.sub(2).eval(points_gathered[0], cells_gathered[0])#*phi_char
 
-    J1 = -ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
+    # J1 = -0.5*ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
+    J1 = -0.5*ufl.grad(c1) - c1 * ufl.grad(phi) +c1*(c1-c2)*ufl.grad(phi)
     expr_J1 = fem.Expression(J1, points)
-    j1_local = expr_J1.eval(domain,cells_local)*J1_char*(x_char**2)
+    j1_local = expr_J1.eval(domain,cells_local)#*J1_char*(x_char**2)
 
-    J2 = -ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
+    # J2 = -0.5*ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
+    J2 = -0.5*ufl.grad(c2) +c2*ufl.grad(phi) +c2*(c1-c2)*ufl.grad(phi)
     expr_J2 = fem.Expression(J2,points)
-    j2_local = expr_J2.eval(domain,cells_local)*J2_char*(x_char**2)
+    j2_local = expr_J2.eval(domain,cells_local)#*J2_char*(x_char**2)
 
 
 
@@ -318,41 +323,73 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
         # print(c_bulk*np.exp(phi_combined[0]/(k*T/q)))
 
         if plot_flag:
-            fig = plt.figure()
-            plt.plot(points_combined[:, 0]*x_char, c1_combined, "k", linewidth=2, label="c1")
-            plt.plot(points_combined[:, 0]*x_char, c2_combined, "b", linewidth=2, label="c2")
-            #plt.plot(points_combined[:,0]*x_char, c_bulk*np.exp(phi_combined/(k*T/q)) / (1- 2*NA*d**3*c_bulk + 2*NA*d**3*c_bulk*np.cosh(phi_combined/(k*T/q))), "green", label="c2 theoretical")
-            plt.xscale("linear")
+            # fig = plt.figure()
+            # plt.plot(points_combined[:, 0], c1_combined, "k", linewidth=2, label="c1")
+            # plt.plot(points_combined[:, 0], c2_combined, "b", linewidth=2, label="c2")
+            # #plt.plot(points_combined[:,0]*x_char, c_bulk*np.exp(phi_combined/(k*T/q)) / (1- 2*NA*d**3*c_bulk + 2*NA*d**3*c_bulk*np.cosh(phi_combined/(k*T/q))), "green", label="c2 theoretical")
+            # plt.xscale("linear")
 
-            plt.grid(True)
-            plt.xlabel("x")
-            plt.legend()
+            # plt.grid(True)
+            # plt.xlabel("x")
+            # plt.legend()
             
+            c1_theoretical = c_bulk_scaled1*np.exp(-phi_combined) / (1- 2*c_bulk_scaled1 + 2*c_bulk_scaled1*np.cosh(phi_combined))
+            c2_theoretical = c_bulk_scaled2*np.exp(phi_combined) / (1- 2*c_bulk_scaled2 + 2*c_bulk_scaled2*np.cosh(phi_combined))
 
-            fig2 = plt.figure()
-            plt.plot(points_combined[:, 0]*x_char, phi_combined, "r", linewidth=2, label="phi")
-            plt.grid(True)
-            plt.xlabel("x")
-            plt.xscale("linear")
-            plt.legend()
+            fig, ((ax1, ax2), (ax3, ax4)) =plt.subplots(2,2)
+            ax3.plot(points_combined[:, 0], phi_combined, color="orange", linewidth=2, label="H")
+            ax3.grid()
+            ax3.legend()
+            ax4.plot(coords, j1_combined+j2_combined, color="green", linestyle="dashed", linewidth=2, label="jtot")
+            ax4.plot(coords, c1_combined+c2_combined, color="green", linestyle="solid", linewidth=2, label="rhotot")
+            ax4.grid()
+            ax4.legend()
+            ax1.plot(points_combined[:, 0], j1_combined, "r", linestyle="dashed", linewidth=2, label="j1")
+            ax1.plot(points_combined[:,0], c1_combined, "r", linestyle="solid", linewidth=2, label="rho1")
+            ax1.plot(points_combined[:,0], c1_theoretical, "black", label="rho1 theoretical")
+            ax1.grid()
+            ax1.legend()
+            ax2.plot(points_combined[:, 0], j2_combined, "b", linestyle="dashed", linewidth=2, label="j2")
+            ax2.plot(points_combined[:,0], c2_combined, "b", linestyle="solid", linewidth=2, label="rho2")
+            ax2.plot(points_combined[:,0], c2_theoretical, "black", label="rho2 theoretical")
+            ax2.grid()
+            ax2.legend()
+            fig.savefig("esempio_Fenics.png", dpi=300, bbox_inches="tight")
+
+            # fig2 = plt.figure()
+            # plt.plot(points_combined[:, 0], phi_combined, color="orange", linewidth=2, label="H")
+            # plt.grid(True)
+            # plt.xlabel("x")
+            # plt.xscale("linear")
+            # plt.legend()
 
 
-            fig3 = plt.figure()
-            plt.plot(coords*x_char, j1_combined+j2_combined, "black", linewidth=2, label="jtot")
-            plt.plot(coords*x_char, j1_combined, "r", linewidth=2, label="j1")
-            plt.plot(coords*x_char, j2_combined, "b", linewidth=2, label="j2")
-            plt.xlabel("x")
-            plt.grid(True)
-            plt.xscale("linear")
-            plt.yscale("linear")
-            plt.legend()
+            # fig3 = plt.figure()
+            # plt.plot(coords, j1_combined+j2_combined, color="green", linestyle="dashed", linewidth=2, label="jtot")
+            # plt.plot(coords, c1_combined+c2_combined, color="green", linestyle="solid", linewidth=2, label="rhotot")
+            # plt.xlabel("x")
+            # plt.grid(True)
+            # plt.xscale("linear")
+            # plt.yscale("linear")
+            # plt.legend()
 
-            fig4 = plt.figure()
-            plt.plot(points_combined[:, 0]*x_char, np.gradient(phi_combined[:,0]), "r", linewidth=2, label="field")
-            plt.grid(True)
-            plt.xlabel("x")
-            plt.xscale("linear")
-            plt.legend()
+            # fig4 = plt.figure()
+            # plt.plot(points_combined[:, 0], j1_combined, "r", linestyle="dashed", linewidth=2, label="j1")
+            # plt.plot(points_combined[:,0], c1_combined, "r", linestyle="solid", linewidth=2, label="rho1")
+            # plt.plot(points_combined[:,0], c1_theoretical, "black", label="rho1 theoretical")
+            # plt.grid(True)
+            # plt.xlabel("x")
+            # plt.xscale("linear")
+            # plt.legend()
+
+            # fig5 = plt.figure()
+            # plt.plot(points_combined[:, 0], j2_combined, "b", linestyle="dashed", linewidth=2, label="j2")
+            # plt.plot(points_combined[:,0], c2_combined, "b", linestyle="solid", linewidth=2, label="rho2")
+            # plt.plot(points_combined[:,0], c2_theoretical, "black", label="rho2 theoretical")
+            # plt.grid(True)
+            # plt.xlabel("x")
+            # plt.xscale("linear")
+            # plt.legend()
 
             print("Done")
             plt.show()
@@ -383,4 +420,4 @@ if __name__ == "__main__":
     # Simulation conditions
     Vapp = k*T/q
     concentrations = Concentration_BC(170, c_bulk1=0.4, c_bulk2=0.4, c_surf1=0.8, c_surf2=0.1, use_surf_bc=True)
-    simulate_mPNP(Vapp, 0,concentrations, True)
+    simulate_mPNP(Vapp, 0,concentrations, plot_flag=True)
