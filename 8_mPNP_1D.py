@@ -66,7 +66,7 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
     Vapp_scaled = Vapp/phi_char
     V_bulk_scaled = V_bulk/phi_char
     L_scaled = L/x_char
-    L_scaled = 1
+    # L_scaled = 1
 
 
 
@@ -74,7 +74,7 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
         
     # Define Mesh
 
-    domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=50000)
+    domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=100000)
     topology, geometry = domain.topology, domain.geometry
     eps = ufl.Constant(domain, np.finfo(float).eps)
     # cluster = ipp.Cluster(engines="mpi", n=1)
@@ -133,7 +133,7 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
     F9 = ufl.inner(-0.5*ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v2)) * ufl.dx
     F8_SS =  ufl.inner(-0.5*ufl.grad(c1) - c1 * ufl.grad(phi) +c1*(c1-c2)*ufl.grad(phi), ufl.grad(v1)) * ufl.dx
     F9_SS = ufl.inner(-0.5*ufl.grad(c2) +c2*ufl.grad(phi) +c2*(c1-c2)*ufl.grad(phi), ufl.grad(v2))*ufl.dx
-    F = F7 + F8_SS + F9_SS
+    F = F7 + F8 + F9
 
     # SET BOUNDARY CONDITIONS 
     def boundary_R(x):
@@ -272,19 +272,19 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
 
     # print(np.shape(points_gathered))
     # print(np.shape(cells_gathered))
-    c1_local = u.sub(0).eval(points_gathered[0], cells_gathered[0])#*c_char
-    c2_local = u.sub(1).eval(points_gathered[0], cells_gathered[0])#*c_char
-    phi_local = u.sub(2).eval(points_gathered[0], cells_gathered[0])#*phi_char
+    c1_local = u.sub(0).eval(points_gathered[0], cells_gathered[0])*c_char
+    c2_local = u.sub(1).eval(points_gathered[0], cells_gathered[0])*c_char
+    phi_local = u.sub(2).eval(points_gathered[0], cells_gathered[0])*phi_char
 
-    # J1 = -0.5*ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
-    J1 = -0.5*ufl.grad(c1) - c1 * ufl.grad(phi) +c1*(c1-c2)*ufl.grad(phi)
+    J1 = -0.5*ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
+    # J1 = -0.5*ufl.grad(c1) - c1 * ufl.grad(phi) +c1*(c1-c2)*ufl.grad(phi)
     expr_J1 = fem.Expression(J1, points)
-    j1_local = expr_J1.eval(domain,cells_local)#*J1_char*(x_char**2)
+    j1_local = expr_J1.eval(domain,cells_local)*J1_char*(x_char**2)
 
-    # J2 = -0.5*ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
-    J2 = -0.5*ufl.grad(c2) +c2*ufl.grad(phi) +c2*(c1-c2)*ufl.grad(phi)
+    J2 = -0.5*ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2))
+    # J2 = -0.5*ufl.grad(c2) +c2*ufl.grad(phi) +c2*(c1-c2)*ufl.grad(phi)
     expr_J2 = fem.Expression(J2,points)
-    j2_local = expr_J2.eval(domain,cells_local)#*J2_char*(x_char**2)
+    j2_local = expr_J2.eval(domain,cells_local)*J2_char*(x_char**2)
 
 
 
@@ -333,25 +333,25 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
             # plt.xlabel("x")
             # plt.legend()
             
-            c1_theoretical = c_bulk_scaled1*np.exp(-phi_combined) / (1- 2*c_bulk_scaled1 + 2*c_bulk_scaled1*np.cosh(phi_combined))
-            c2_theoretical = c_bulk_scaled2*np.exp(phi_combined) / (1- 2*c_bulk_scaled2 + 2*c_bulk_scaled2*np.cosh(phi_combined))
+            c1_theoretical = c_bulk_scaled*np.exp(-phi_combined) / (1- 2*c_bulk_scaled + 2*c_bulk_scaled*np.cosh(phi_combined))
+            c2_theoretical = c_bulk_scaled*np.exp(phi_combined) / (1- 2*c_bulk_scaled + 2*c_bulk_scaled*np.cosh(phi_combined))
 
             fig, ((ax1, ax2), (ax3, ax4)) =plt.subplots(2,2)
-            ax3.plot(points_combined[:, 0], phi_combined, color="orange", linewidth=2, label="H")
+            ax3.plot(points_combined[:, 0]*x_char, phi_combined, color="orange", linewidth=2, label="H")
             ax3.grid()
             ax3.legend()
-            ax4.plot(coords, j1_combined+j2_combined, color="green", linestyle="dashed", linewidth=2, label="jtot")
-            ax4.plot(coords, c1_combined+c2_combined, color="green", linestyle="solid", linewidth=2, label="rhotot")
+            ax4.plot(coords*x_char, j1_combined+j2_combined, color="green", linestyle="dashed", linewidth=2, label="jtot")
+            ax4.plot(coords*x_char, c1_combined+c2_combined, color="green", linestyle="solid", linewidth=2, label="rhotot")
             ax4.grid()
             ax4.legend()
-            ax1.plot(points_combined[:, 0], j1_combined, "r", linestyle="dashed", linewidth=2, label="j1")
-            ax1.plot(points_combined[:,0], c1_combined, "r", linestyle="solid", linewidth=2, label="rho1")
-            ax1.plot(points_combined[:,0], c1_theoretical, "black", label="rho1 theoretical")
+            ax1.plot(points_combined[:, 0]*x_char, j1_combined, "r", linestyle="dashed", linewidth=2, label="j1")
+            ax1.plot(points_combined[:,0]*x_char, c1_combined, "r", linestyle="solid", linewidth=2, label="rho1")
+            # ax1.plot(points_combined[:,0], c1_theoretical, "black", label="rho1 theoretical")
             ax1.grid()
             ax1.legend()
-            ax2.plot(points_combined[:, 0], j2_combined, "b", linestyle="dashed", linewidth=2, label="j2")
-            ax2.plot(points_combined[:,0], c2_combined, "b", linestyle="solid", linewidth=2, label="rho2")
-            ax2.plot(points_combined[:,0], c2_theoretical, "black", label="rho2 theoretical")
+            ax2.plot(points_combined[:, 0]*x_char, j2_combined, "b", linestyle="dashed", linewidth=2, label="j2")
+            ax2.plot(points_combined[:,0]*x_char, c2_combined, "b", linestyle="solid", linewidth=2, label="rho2")
+            # ax2.plot(points_combined[:,0], c2_theoretical, "black", label="rho2 theoretical")
             ax2.grid()
             ax2.legend()
             fig.savefig("esempio_Fenics.png", dpi=300, bbox_inches="tight")
@@ -419,5 +419,5 @@ if __name__ == "__main__":
 
     # Simulation conditions
     Vapp = k*T/q
-    concentrations = Concentration_BC(170, c_bulk1=0.4, c_bulk2=0.4, c_surf1=0.8, c_surf2=0.1, use_surf_bc=True)
+    concentrations = Concentration_BC(170, c_bulk1=4e-4, c_bulk2=4e-4, c_surf1=8e-4, c_surf2=1e-4, use_surf_bc=False)
     simulate_mPNP(Vapp, 0,concentrations, plot_flag=True)
