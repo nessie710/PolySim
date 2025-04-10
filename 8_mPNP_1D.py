@@ -65,8 +65,8 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
     c_bulk_scaled = c_bulk/c_char
     Vapp_scaled = Vapp/phi_char
     V_bulk_scaled = V_bulk/phi_char
-    L_scaled = L/x_char
-    #L_scaled = 35
+    # L_scaled = L/x_char
+    L_scaled = 1
     print(x_char)
 
 
@@ -75,7 +75,7 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
         
     # Define Mesh
 
-    domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=100000)
+    domain = mesh.create_interval(comm=MPI.COMM_WORLD, points=(0.0, L_scaled), nx=50000)
     topology, geometry = domain.topology, domain.geometry
     eps = ufl.Constant(domain, np.finfo(float).eps)
     # cluster = ipp.Cluster(engines="mpi", n=1)
@@ -107,20 +107,20 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
 
 
     # Initial conditions
-    # def c0_init(x):
-    #     values = np.zeros((1, x.shape[1]))
-    #     values[0] = c_bulk_scaled
-    #     return values
+    def c0_init(x):
+        values = np.zeros((1, x.shape[1]))
+        values[0] = c_bulk_scaled
+        return values
 
 
-    # def V0_init(x):
-    #     values = np.zeros((1, x.shape[1]))
-    #     values[0] = 0
-    #     return values
+    def V0_init(x):
+        values = np.zeros((1, x.shape[1]))
+        values[0] = 0
+        return values
 
-    # u.sub(0).interpolate(c0_init)
-    # u.sub(1).interpolate(c0_init)
-    # u.sub(2).interpolate(V0_init)
+    u.sub(0).interpolate(c0_init)
+    u.sub(1).interpolate(c0_init)
+    u.sub(2).interpolate(V0_init)
 
     n = ufl.FacetNormal(domain)
     def boundary_R(x):
@@ -156,8 +156,8 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
     # F2 = -ufl.inner(ufl.grad(c2)[0], v2) * ufl.dx + ufl.inner(c2 * ufl.grad(phi)[0], v2) * ufl.dx - ufl.inner((c2/(1-c1-c2))*(ufl.grad(c1)[0]+ ufl.grad(c2)[0]), v2)*ufl.dx
 
     F7 = ufl.inner(ufl.grad(phi), ufl.grad(vphi)) * ufl.dx - ufl.inner((c1-c2), vphi) * ufl.dx
-    F8 = ufl.inner(-ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v1)) * ufl.dx #- ufl.dot(ufl.grad(ufl.exp(phi)-ufl.exp(-phi)), n)*v1*ds(1) #- ufl.dot(ufl.grad(ufl.exp(phi)-ufl.exp(-phi)), n)*v1*ds(2)
-    F9 = ufl.inner(-ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)) , ufl.grad(v2)) * ufl.dx #- ufl.dot(ufl.grad(ufl.exp(phi)-ufl.exp(-phi)), n)*v2*ds(1) #- ufl.dot(ufl.grad(ufl.exp(phi)-ufl.exp(-phi)), n)*v2*ds(2)
+    F8 = ufl.inner(-ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v1)) * ufl.dx #- fem.Constant(domain,default_scalar_type(1))*v1*ds(1) #- ufl.dot(ufl.grad(ufl.exp(phi)-ufl.exp(-phi)), n)*v1*ds(2)
+    F9 = ufl.inner(-ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)) , ufl.grad(v2)) * ufl.dx #- fem.Constant(domain,default_scalar_type(1))*v2*ds(1) #- ufl.dot(ufl.grad(ufl.exp(phi)-ufl.exp(-phi)), n)*v2*ds(2)
     F8_SS =  ufl.inner(-ufl.grad(c1) - c1 * ufl.grad(phi) +c1*(c1-c2)*ufl.grad(phi), ufl.grad(v1)) * ufl.dx
     F9_SS = ufl.inner(-ufl.grad(c2) +c2*ufl.grad(phi) +c2*(c1-c2)*ufl.grad(phi), ufl.grad(v2))*ufl.dx
     F_SS = F7 + F8_SS + F9_SS
@@ -169,13 +169,13 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
     V_split = V.sub(2)
     V_potential, _ = V_split.collapse()
     ud = fem.Function(V_potential)
-    ud.interpolate(lambda x : x[0]*0 + Vapp_scaled)
-    dofs_bulk = fem.locate_dofs_geometrical((V_split,V_potential), boundary_R)
+    ud.interpolate(lambda x : x[0]*0 + V_bulk_scaled)
+    dofs_bulk = fem.locate_dofs_geometrical((V_split,V_potential), boundary_L)
     bc_potential_bulk = fem.dirichletbc(ud, dofs_bulk, V_split)
 
     ud = fem.Function(V_potential)
-    ud.interpolate(lambda x : x[0]*0 + V_bulk_scaled )
-    dofs_surface = fem.locate_dofs_geometrical((V_split,V_potential),boundary_L)
+    ud.interpolate(lambda x : x[0]*0 + Vapp_scaled )
+    dofs_surface = fem.locate_dofs_geometrical((V_split,V_potential),boundary_R)
     bc_potential_surface = fem.dirichletbc(ud, dofs_surface, V_split)
 
 
