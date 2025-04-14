@@ -66,7 +66,7 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
     Vapp_scaled = Vapp/phi_char
     V_bulk_scaled = V_bulk/phi_char
     # L_scaled = L/x_char
-    L_scaled = 1
+    L_scaled = 6
     print(x_char)
 
 
