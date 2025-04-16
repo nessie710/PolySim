@@ -584,7 +584,7 @@ if __name__ == "__main__":
     # 0      C     B      A
     # |------|MMMMM|------|
 
-    VB = -2*k*T/q
+    VB = -20*k*T/q
     bulk_L = 170
     bulk_R = 170
     imposed_L1=bulk_L
