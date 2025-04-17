@@ -67,9 +67,30 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
     Vapp_scaled = Vapp/phi_char
     V_bulk_scaled = V_bulk/phi_char
     # L_scaled = L/x_char
-    L_scaled = 6
+    L_mem = 6
+    L_ely = 10
+    L_scaled = L_mem+2*L_ely
+    kf = 0.00001
+    kb=0.01
     print(x_char)
 
+
+    #SUBDOMAINS
+    def ely1(x):
+        return x[0]<=L_ely
+    
+    def mem(x):
+        return x[0]>=L_ely and x[0]<=L_mem+L_ely
+
+    def ely2(x):
+        return x[0]>=L_mem+L_ely
+
+
+    def boundary_memL(x):
+        return np.isclose(x[0], L_ely)
+
+    def boundary_memR(x):
+        return np.isclose(x[0], L_ely+L_mem)
 
 
     #%%px
@@ -134,11 +155,11 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
 
 
     # Trova i facet a destra
-    facets_right = dolfinx.mesh.locate_entities_boundary(domain, domain.topology.dim - 1, boundary_R)
+    facets_right = dolfinx.mesh.locate_entities_boundary(domain, domain.topology.dim - 1, boundary_memR)
     tags_right = np.full(len(facets_right), 1, dtype=np.int32)
 
     # Trova i facet a sinistra
-    facets_left = dolfinx.mesh.locate_entities_boundary(domain, domain.topology.dim - 1, boundary_L)
+    facets_left = dolfinx.mesh.locate_entities_boundary(domain, domain.topology.dim - 1, boundary_memL)
     tags_left = np.full(len(facets_left), 2, dtype=np.int32)
 
     # Unisci i facet e i tag
@@ -159,12 +180,12 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
     # F2 = -ufl.inner(ufl.grad(c2)[0], v2) * ufl.dx + ufl.inner(c2 * ufl.grad(phi)[0], v2) * ufl.dx - ufl.inner((c2/(1-c1-c2))*(ufl.grad(c1)[0]+ ufl.grad(c2)[0]), v2)*ufl.dx
 
     F7_SS = ufl.inner(ufl.grad(phi), ufl.grad(vphi)) * ufl.dx - ufl.inner((c1-c2), vphi) * ufl.dx
-    F8_SS =  -ufl.inner(-ufl.grad(c1) - c1 * ufl.grad(phi) +c1*(c1-c2)*ufl.grad(phi), ufl.grad(v1)) * ufl.dx
-    F9_SS = -ufl.inner(-ufl.grad(c2) +c2*ufl.grad(phi) +c2*(c1-c2)*ufl.grad(phi), ufl.grad(v2))*ufl.dx
+    F8_SS =  -ufl.inner(-ufl.grad(c1) - c1 * ufl.grad(phi) +c1*(c1-c2)*ufl.grad(phi), ufl.grad(v1)) * ufl.dx + (fem.Constant(domain,default_scalar_type(kf-kb))*c1)*v1*ds(1)+ (fem.Constant(domain,default_scalar_type(kf-kb))*c1)*v1*ds(2) 
+    F9_SS = -ufl.inner(-ufl.grad(c2) +c2*ufl.grad(phi) +c2*(c1-c2)*ufl.grad(phi), ufl.grad(v2))*ufl.dx+ (fem.Constant(domain,default_scalar_type(kf-kb))*c2)*v2*ds(1)+ (fem.Constant(domain,default_scalar_type(kf-kb))*c2)*v2*ds(2) 
     F_SS = F7_SS + F8_SS + F9_SS
     F7 = ufl.inner(ufl.grad(phi), ufl.grad(vphi)) * ufl.dx - ufl.inner((c1-c2), vphi) * ufl.dx
-    F8 = -ufl.inner(-ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v1)) * ufl.dx #- fem.Constant(domain,default_scalar_type(1))*v1*ds(1) #- ufl.dot(ufl.grad(ufl.exp(phi)-ufl.exp(-phi)), n)*v1*ds(2)
-    F9 = -ufl.inner(-ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)) , ufl.grad(v2)) * ufl.dx #- fem.Constant(domain,default_scalar_type(1))*v2*ds(1) #- ufl.dot(ufl.grad(ufl.exp(phi)-ufl.exp(-phi)), n)*v2*ds(2)
+    F8 = -ufl.inner(-ufl.grad(c1) - c1 * ufl.grad(phi) - (c1/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)), ufl.grad(v1)) * ufl.dx + (fem.Constant(domain,default_scalar_type(kf-kb))*c1)*v1*ds(1)+ (fem.Constant(domain,default_scalar_type(kf-kb))*c1)*v1*ds(2) 
+    F9 = -ufl.inner(-ufl.grad(c2) + c2 * ufl.grad(phi) - (c2/(1-c1-c2))*(ufl.grad(c1)+ ufl.grad(c2)) , ufl.grad(v2)) * ufl.dx + (fem.Constant(domain,default_scalar_type(kf-kb))*c2)*v2*ds(1)+ (fem.Constant(domain,default_scalar_type(kf-kb))*c2)*v2*ds(2) 
     F_NSS = F7 + F8 + F9 
 
 
@@ -240,7 +261,23 @@ def simulate_mPNP(Vapp, Vbulk, concentrations, plot_flag):
         dofs_bulk = fem.locate_dofs_geometrical((V_split,V_c2), boundary_L)
         bc_c2_bulk = fem.dirichletbc(ud, dofs_bulk, V_split)  
 
-        bcs = [bc_potential_bulk, bc_potential_surface, bc_c1_bulk, bc_c2_bulk]
+
+        V_split = V.sub(0)
+        V_c1, _ = V_split.collapse()
+        ud = fem.Function(V_c1)
+        ud.interpolate(lambda x : x[0]*0 + c_bulk_scaled/2)
+        dofs_bulk = fem.locate_dofs_geometrical((V_split,V_c1), boundary_R)
+        bc_c1_surf = fem.dirichletbc(ud, dofs_bulk, V_split)
+
+
+        V_split = V.sub(1)
+        V_c2, _ = V_split.collapse()
+        ud = fem.Function(V_c2)
+        ud.interpolate(lambda x : x[0]*0 + c_bulk_scaled/2)
+        dofs_bulk = fem.locate_dofs_geometrical((V_split,V_c2), boundary_R)
+        bc_c2_surf = fem.dirichletbc(ud, dofs_bulk, V_split)
+
+        bcs = [bc_potential_bulk, bc_potential_surface, bc_c1_bulk, bc_c2_bulk, bc_c1_surf, bc_c2_surf]
 
 
     # SET PROBLEM
@@ -584,7 +621,7 @@ if __name__ == "__main__":
     # 0      C     B      A
     # |------|MMMMM|------|
 
-    VB = -2*k*T/q
+    VB = -20*k*T/q
     bulk_L = 170
     bulk_R = 170
     imposed_L1=bulk_L
@@ -598,5 +635,5 @@ if __name__ == "__main__":
     print("We are imposing at left c1=c2 "+str(bulk_L))
 
 
-    concentrations = Concentration_BC(170, c_bulk1=imposed_L1, c_bulk2=imposed_L2, c_surf1=imposed_R1, c_surf2=imposed_R2, use_surf_bc=True)
+    concentrations = Concentration_BC(170, c_bulk1=imposed_L1, c_bulk2=imposed_L2, c_surf1=imposed_R1, c_surf2=imposed_R2, use_surf_bc=False)
     simulate_mPNP(VB, 0,concentrations, plot_flag=True)
